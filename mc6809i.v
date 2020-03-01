@@ -48,6 +48,7 @@ module mc6809i
     output  [7:0]  DOut,
     output  [15:0] ADDR,
     output  RnW,
+    input   CLK,
     input   E,
     input   Q,
     output  BS,
@@ -642,6 +643,68 @@ begin
     end
 end
 
+always @(posedge CLK)
+begin
+    rnRESET <= nRESET;
+    
+    NMISample2 <= nNMI;
+    
+    IRQSample2 <= nIRQ;
+    IRQLatched <= IRQSample2;
+
+    FIRQSample2 <= nFIRQ;
+    FIRQLatched <= FIRQSample2;
+
+    HALTSample2 <= nHALT;
+    HALTLatched <= HALTSample2;
+
+    DMABREQSample2 <= nDMABREQ;
+    DMABREQLatched <= DMABREQSample2;
+
+
+    if (rnRESET == 1)
+    begin
+        CpuState <= CpuState_nxt;
+        
+        // Don't interpret this next item as "The Next State"; it's a special case 'after this 
+        // generic state, go to this programmable state', so that a single state 
+        // can be shared for many tasks. [Specifically, the stack push/pull code, which is used
+        // for PSH, PUL, Interrupts, RTI, etc.
+        NextState <= NextState_nxt;
+         
+        // CPU registers latch from the combinatorial circuit
+        a <= a_nxt;
+        b <= b_nxt;
+        x <= x_nxt;
+        y <= y_nxt;
+        s <= s_nxt;
+        u <= u_nxt;
+        cc <= cc_nxt;
+        dp <= dp_nxt;
+        pc <= pc_nxt;
+        tmp <= tmp_nxt;
+        addr <= addr_nxt;
+        ea <= ea_nxt;
+        
+        InstPage2 <= InstPage2_nxt;
+        InstPage3 <= InstPage3_nxt;
+        Inst1 <= Inst1_nxt;
+        Inst2 <= Inst2_nxt;
+        Inst3 <= Inst3_nxt;
+        NMIClear <= NMIClear_nxt;
+        
+        IntType <= IntType_nxt;
+        
+        if (s != s_nxt)                 // Once S changes at all (default is '0'), release the NMI Mask.
+            NMIMask <= 1'b0;
+    end
+    else
+    begin
+        CpuState <= CPUSTATE_RESET; 
+        NMIMask <= 1'b1; // Mask NMI until S is loaded.
+        NMIClear <= 1'b0; // Mark us as not having serviced NMI
+    end
+end
 
 /////////////////////////////////////////////////////////////////
 // Decode the Index byte
