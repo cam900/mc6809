@@ -3467,7 +3467,7 @@ begin
     CPUSTATE_PSH_ACTION:
     begin
         rAVMA = 1'b1;
-        if (tmp[8] & ~(tmp[15]))                    // IV_LO
+        if (tmp[11] & ~(tmp[15]))                    // IV_LO
         begin
             addr_nxt = (tmp[14]) ? u_m1 : s_m1;
             if (tmp[14])
@@ -3478,7 +3478,7 @@ begin
             RnWOut = 1'b0; // write
             tmp_nxt[15] = 1'b1;            
         end
-        else if (tmp[8] & (tmp[15]))                    // IV_HI
+        else if (tmp[11] & (tmp[15]))                    // IV_HI
         begin
             addr_nxt = (tmp[14]) ? u_m1 : s_m1;
             if (tmp[14])
@@ -3487,7 +3487,7 @@ begin
                 s_nxt = s_m1;
             DOutput = iv[15:8];
             RnWOut = 1'b0; // write
-            tmp_nxt[8] = 1'b0;
+            tmp_nxt[11] = 1'b0;
             tmp_nxt[15] = 1'b0;            
         end
         else if (tmp[7] & ~(tmp[15]))                    // PC_LO
@@ -3668,7 +3668,7 @@ begin
             cc_nxt = D[7:0];
             if (tmp[12] == 1'b1) // This pull is from an RTI, the E flag comes from the retrieved CC, and set the tmp_nxt accordingly, indicating what other registers to retrieve
             begin
-                tmp_nxt[8] = 1'b1;
+                tmp_nxt[11] = 1'b1;
                 if (D[CC_E_BIT])
                     tmp_nxt[7:0] = 8'HFE;     // Retrieve all registers (ENTIRE) [CC is already retrieved]
                 else
@@ -3797,7 +3797,7 @@ begin
             tmp_nxt[7] = 1'b0;
             tmp_nxt[15] = 1'b0;            
         end
-        else if (tmp[8] & (~tmp[15]))                    // IV_HI
+        else if (tmp[11] & (~tmp[15]))                    // IV_HI
         begin
             addr_nxt = (tmp[14]) ? u : s;
             if (tmp[14])
@@ -3807,7 +3807,7 @@ begin
             iv_nxt[15:8] = D[7:0];
             tmp_nxt[15] = 1'b1;            
         end
-        else if (tmp[8] & tmp[15])                    // IV_LO
+        else if (tmp[11] & tmp[15])                    // IV_LO
         begin
             addr_nxt = (tmp[14]) ? u : s;
             if (tmp[14])
@@ -3837,7 +3837,7 @@ begin
         NMIClear_nxt = 1'b1;
         addr_nxt = pc;
         // tmp stands as the bits to push to the stack
-        tmp_nxt = 16'H21FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC; set LIC on every push 
+        tmp_nxt = 16'H28FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC; set LIC on every push 
         NextState_nxt = CPUSTATE_IRQ_DONTCARE2;
         rAVMA = 1'b0;
         CpuState_nxt = CPUSTATE_IRQ_DONTCARE;
@@ -3848,7 +3848,7 @@ begin
     CPUSTATE_IRQ_START:
     begin
         addr_nxt = pc;
-        tmp_nxt = 16'H21FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC; set LIC on every push 
+        tmp_nxt = 16'H28FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC; set LIC on every push 
         NextState_nxt = CPUSTATE_IRQ_DONTCARE2;
         rAVMA = 1'b1;
         CpuState_nxt = CPUSTATE_IRQ_DONTCARE;
@@ -3859,7 +3859,7 @@ begin
     CPUSTATE_FIRQ_START:
     begin
         addr_nxt = pc;
-        tmp_nxt = 16'H2181; // Save to the S stack, PC, CC; set LIC on every push 
+        tmp_nxt = 16'H2881; // Save to the S stack, PC, CC; set LIC on every push 
         NextState_nxt = CPUSTATE_IRQ_DONTCARE2;
         rAVMA = 1'b1;
         CpuState_nxt = CPUSTATE_IRQ_DONTCARE;
@@ -3870,7 +3870,7 @@ begin
     CPUSTATE_SWI_START:
     begin
         addr_nxt = pc;
-        tmp_nxt = 16'H01FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC
+        tmp_nxt = 16'H08FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC
 
         NextState_nxt = CPUSTATE_IRQ_DONTCARE2;
         rAVMA = 1'b1;
