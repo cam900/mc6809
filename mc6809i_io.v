@@ -38,7 +38,7 @@
 //           attempt to fetch and run an exception 1 byte later.
 //
 
-module mc6809i
+module mc6809iv
 #(
     parameter ILLEGAL_INSTRUCTIONS="GHOST"
 ) 
@@ -48,8 +48,7 @@ module mc6809i
     output  [7:0]  DOut,
     output  [15:0] ADDR,
     output  RnW,
-    input   E,
-    input   Q,
+    input   CLK,
     output  BS,
     output  BA,
     input   nIRQ,
@@ -61,6 +60,7 @@ module mc6809i
     input   nHALT,
     input   nRESET,
     input   nDMABREQ,
+    input   [15:0] Intvector,
     output  [111:0] RegData
 );
 
@@ -92,14 +92,14 @@ assign RnW = RnWOut;
 
 /////////////////////////////////////////////////
 // Vectors
-`define RESET_VECTOR        16'HFFFE
-`define NMI_VECTOR          16'HFFFC
-`define SWI_VECTOR          16'HFFFA
-`define IRQ_VECTOR          16'HFFF8
-`define FIRQ_VECTOR         16'HFFF6
-`define SWI2_VECTOR         16'HFFF4
-`define SWI3_VECTOR         16'HFFF2
-`define Reserved_VECTOR     16'HFFF0
+`define RESET_VECTOR        4'HE
+`define NMI_VECTOR          4'HC
+`define SWI_VECTOR          4'HA
+`define IRQ_VECTOR          4'H8
+`define FIRQ_VECTOR         4'H6
+`define SWI2_VECTOR         4'H4
+`define SWI3_VECTOR         4'H2
+`define Reserved_VECTOR     4'H0
 
 //////////////////////////////////////////////////////
 // Latched registers
@@ -118,7 +118,7 @@ reg     [7:0]           cc;
 reg     [15:0]          tmp;
 reg     [15:0]          addr;
 reg     [15:0]          ea;
-
+reg     [15:0]          iv;
 
 // Debug ability to export register contents
 assign  RegData[7:0] = a;
@@ -146,6 +146,7 @@ reg     [7:0]           cc_nxt;
 reg     [15:0]          addr_nxt;
 reg     [15:0]          ea_nxt;
 reg     [15:0]          tmp_nxt;
+reg     [15:0]          iv_nxt;
 
 reg                     BS_nxt;
 reg                     BA_nxt;
@@ -562,39 +563,23 @@ end
 // analyzer on the 6809 to determine how many cycles before a new instruction an interrupt (or /HALT & /DMABREQ)
 // had to be asserted to be noted instead of the next instruction running start to finish.  
 // 
-always @(negedge Q)
-begin
-    NMISample <= nNMI;
-    
-    IRQSample <= nIRQ;
-
-    FIRQSample <= nFIRQ;
-
-    HALTSample <= nHALT;
-    
-    DMABREQSample <= nDMABREQ;
-
-        
-end
-
-
 reg rnRESET=0; // The latched version of /RESET, useful 1 clock after it's latched
-always @(negedge E)
+always @(posedge CLK)
 begin
     rnRESET <= nRESET;
     
-    NMISample2 <= NMISample;
+    NMISample2 <= nNMI;
     
-    IRQSample2 <= IRQSample;
+    IRQSample2 <= nIRQ;
     IRQLatched <= IRQSample2;
 
-    FIRQSample2 <= FIRQSample;
+    FIRQSample2 <= nFIRQ;
     FIRQLatched <= FIRQSample2;
 
-    HALTSample2 <= HALTSample;
+    HALTSample2 <= nHALT;
     HALTLatched <= HALTSample2;
 
-    DMABREQSample2 <= DMABREQSample;
+    DMABREQSample2 <= nDMABREQ;
     DMABREQLatched <= DMABREQSample2;
 
 
@@ -621,6 +606,7 @@ begin
         tmp <= tmp_nxt;
         addr <= addr_nxt;
         ea <= ea_nxt;
+        iv <= iv_nxt;
         
         InstPage2 <= InstPage2_nxt;
         InstPage3 <= InstPage3_nxt;
@@ -641,7 +627,6 @@ begin
         NMIClear <= 1'b0; // Mark us as not having serviced NMI
     end
 end
-
 
 /////////////////////////////////////////////////////////////////
 // Decode the Index byte
@@ -1423,10 +1408,15 @@ localparam EXGTFR_REG_Y             =  4'H2;
 localparam EXGTFR_REG_U             =  4'H3;
 localparam EXGTFR_REG_S             =  4'H4;
 localparam EXGTFR_REG_PC            =  4'H5;
+// W 0x6
+// V 0x7
 localparam EXGTFR_REG_A             =  4'H8;
 localparam EXGTFR_REG_B             =  4'H9;
 localparam EXGTFR_REG_CC            =  4'HA;
 localparam EXGTFR_REG_DP            =  4'HB;
+localparam EXGTFR_REG_IV            =  4'HC;
+// E 0xe
+// F 0xf
 
 function IsALU8Set0(input   [7:0] instr);
 reg     result;
@@ -1647,6 +1637,8 @@ begin
                 EXGTFRRegister   =  {8'HFF, b};
             EXGTFR_REG_CC:
                 EXGTFRRegister   =  {8'HFF, cc};
+            EXGTFR_REG_IV:
+                EXGTFRRegister   =  iv;
             default:
                 EXGTFRRegister   =  16'H0;                                       
         endcase
@@ -1691,6 +1683,7 @@ begin
     pc_nxt     =  pc;
     tmp_nxt    =  tmp;
     ea_nxt     =  ea;
+    iv_nxt     =  iv;
     
     ALU_A      =  8'H00;
     ALU_B      =  8'H00;
@@ -1726,6 +1719,7 @@ begin
         cc_nxt     =  CC_F | CC_I; // reset disables interrupts
         dp_nxt     =  0;
         ea_nxt     =  16'HFFFF;
+        iv_nxt     =  Intvector;
         
         RnWOut     =  1;        // read
         rLIC       =  1'b0;     // Instruction incomplete
@@ -1737,7 +1731,7 @@ begin
     
     CPUSTATE_RESET0:
     begin
-        addr_nxt       =  `RESET_VECTOR;
+        addr_nxt       =  {iv[15:4], `RESET_VECTOR};
         rBUSY          =  1'b1;
         pc_nxt[15:8]   =  D[7:0];
         BS_nxt         =  1'b1; // ACK RESET
@@ -2035,7 +2029,7 @@ begin
                             tmp_nxt[13:8] = 6'H00;
                             tmp_nxt[7:0] = Inst2_nxt;
                             rAVMA = 1'b0;
-                            CpuState_nxt = CPUSTATE_PSH_DONTCARE1;
+                            CpuState_nxt = CPUSTATE_PSH_DONTCARE2;
                             NextState_nxt = CPUSTATE_FETCH_I1;
                         end
                         else if ( (Inst1 == OPCODE_IMM_PULS) | (Inst1 == OPCODE_IMM_PULU) )
@@ -2074,6 +2068,8 @@ begin
                                     b_nxt  =  EXGTFRRegA[7:0];
                                 EXGTFR_REG_CC:
                                     cc_nxt =  EXGTFRRegA[7:0];
+                                EXGTFR_REG_IV:
+                                    iv_nxt =  EXGTFRRegA;
                                 default:
                                 begin
                                 end
@@ -2107,6 +2103,8 @@ begin
                                     b_nxt  =  EXGTFRRegB[7:0];
                                 EXGTFR_REG_CC:
                                     cc_nxt =  EXGTFRRegB[7:0];
+                                EXGTFR_REG_IV:
+                                    iv_nxt =  EXGTFRRegB;
                                 default:
                                 begin
                                 end
@@ -2132,6 +2130,8 @@ begin
                                     b_nxt  =  EXGTFRRegA[7:0];
                                 EXGTFR_REG_CC:
                                     cc_nxt =  EXGTFRRegA[7:0];
+                                EXGTFR_REG_IV:
+                                    iv_nxt =  EXGTFRRegA;
                                 default:
                                 begin
                                 end
@@ -3467,7 +3467,30 @@ begin
     CPUSTATE_PSH_ACTION:
     begin
         rAVMA = 1'b1;
-        if (tmp[7] & ~(tmp[15]))                    // PC_LO
+        if (tmp[8] & ~(tmp[15]))                    // IV_LO
+        begin
+            addr_nxt = (tmp[14]) ? u_m1 : s_m1;
+            if (tmp[14])
+                u_nxt = u_m1;
+            else
+                s_nxt = s_m1;
+            DOutput = iv[7:0];
+            RnWOut = 1'b0; // write
+            tmp_nxt[15] = 1'b1;            
+        end
+        else if (tmp[8] & (tmp[15]))                    // IV_HI
+        begin
+            addr_nxt = (tmp[14]) ? u_m1 : s_m1;
+            if (tmp[14])
+                u_nxt = u_m1;
+            else
+                s_nxt = s_m1;
+            DOutput = iv[15:8];
+            RnWOut = 1'b0; // write
+            tmp_nxt[8] = 1'b0;
+            tmp_nxt[15] = 1'b0;            
+        end
+        else if (tmp[7] & ~(tmp[15]))                    // PC_LO
         begin
             addr_nxt = (tmp[14]) ? u_m1 : s_m1;
             if (tmp[14])
@@ -3645,6 +3668,7 @@ begin
             cc_nxt = D[7:0];
             if (tmp[12] == 1'b1) // This pull is from an RTI, the E flag comes from the retrieved CC, and set the tmp_nxt accordingly, indicating what other registers to retrieve
             begin
+                tmp_nxt[8] = 1'b1;
                 if (D[CC_E_BIT])
                     tmp_nxt[7:0] = 8'HFE;     // Retrieve all registers (ENTIRE) [CC is already retrieved]
                 else
@@ -3773,6 +3797,27 @@ begin
             tmp_nxt[7] = 1'b0;
             tmp_nxt[15] = 1'b0;            
         end
+        else if (tmp[8] & (~tmp[15]))                    // IV_HI
+        begin
+            addr_nxt = (tmp[14]) ? u : s;
+            if (tmp[14])
+                u_nxt = u_p1;
+            else
+                s_nxt = s_p1;
+            iv_nxt[15:8] = D[7:0];
+            tmp_nxt[15] = 1'b1;            
+        end
+        else if (tmp[8] & tmp[15])                    // IV_LO
+        begin
+            addr_nxt = (tmp[14]) ? u : s;
+            if (tmp[14])
+                u_nxt = u_p1;
+            else
+                s_nxt = s_p1;
+            iv_nxt[7:0] = D[7:0];
+            tmp_nxt[8] = 1'b0;
+            tmp_nxt[15] = 1'b0;            
+        end
         else
         begin
             addr_nxt = (tmp[14]) ? u : s;
@@ -3792,7 +3837,7 @@ begin
         NMIClear_nxt = 1'b1;
         addr_nxt = pc;
         // tmp stands as the bits to push to the stack
-        tmp_nxt = 16'H20FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC; set LIC on every push 
+        tmp_nxt = 16'H21FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC; set LIC on every push 
         NextState_nxt = CPUSTATE_IRQ_DONTCARE2;
         rAVMA = 1'b0;
         CpuState_nxt = CPUSTATE_IRQ_DONTCARE;
@@ -3803,18 +3848,18 @@ begin
     CPUSTATE_IRQ_START:
     begin
         addr_nxt = pc;
-        tmp_nxt = 16'H20FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC; set LIC on every push 
+        tmp_nxt = 16'H21FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC; set LIC on every push 
         NextState_nxt = CPUSTATE_IRQ_DONTCARE2;
         rAVMA = 1'b1;
         CpuState_nxt = CPUSTATE_IRQ_DONTCARE;
-        IntType_nxt = INTTYPE_IRQ;        
+        IntType_nxt = INTTYPE_IRQ;
         cc_nxt[CC_E_BIT] = 1'b1;
     end
 
     CPUSTATE_FIRQ_START:
     begin
         addr_nxt = pc;
-        tmp_nxt = 16'H2081; // Save to the S stack, PC, CC; set LIC on every push 
+        tmp_nxt = 16'H2181; // Save to the S stack, PC, CC; set LIC on every push 
         NextState_nxt = CPUSTATE_IRQ_DONTCARE2;
         rAVMA = 1'b1;
         CpuState_nxt = CPUSTATE_IRQ_DONTCARE;
@@ -3825,7 +3870,7 @@ begin
     CPUSTATE_SWI_START:
     begin
         addr_nxt = pc;
-        tmp_nxt = 16'H00FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC
+        tmp_nxt = 16'H01FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC
 
         NextState_nxt = CPUSTATE_IRQ_DONTCARE2;
         rAVMA = 1'b1;
@@ -3862,34 +3907,34 @@ begin
         case (IntType)
             INTTYPE_NMI:
             begin
-                addr_nxt = `NMI_VECTOR;
+                addr_nxt = {iv[15:4], `NMI_VECTOR};
                 BS_nxt         =  1'b1; // ACK Interrupt
             end
             INTTYPE_IRQ:
             begin
-                addr_nxt = `IRQ_VECTOR;
+                addr_nxt = {iv[15:4], `IRQ_VECTOR};
                 BS_nxt         =  1'b1; // ACK Interrupt
             end
             INTTYPE_SWI:
             begin
-                addr_nxt = `SWI_VECTOR;
+                addr_nxt = {iv[15:4], `SWI_VECTOR};
             end
             INTTYPE_FIRQ:
             begin
-                addr_nxt = `FIRQ_VECTOR;
+                addr_nxt = {iv[15:4], `FIRQ_VECTOR};
                 BS_nxt         =  1'b1; // ACK Interrupt
             end
             INTTYPE_SWI2:
             begin
-                addr_nxt = `SWI2_VECTOR;
+                addr_nxt = {iv[15:4], `SWI2_VECTOR};
             end
             INTTYPE_SWI3:
             begin
-                addr_nxt = `SWI3_VECTOR;
+                addr_nxt = {iv[15:4], `SWI3_VECTOR};
             end
             default: // make the default an IRQ, even though it really should never happen 
             begin
-                addr_nxt = `IRQ_VECTOR;
+                addr_nxt = {iv[15:4], `IRQ_VECTOR};
                 BS_nxt         =  1'b1; // ACK Interrupt
             end
         endcase
@@ -3908,39 +3953,39 @@ begin
         case (IntType)
             INTTYPE_NMI:
             begin
-                addr_nxt = `NMI_VECTOR+16'H1;
+                addr_nxt = {iv[15:4], `NMI_VECTOR}+16'H1;
                 cc_nxt[CC_I_BIT] = 1'b1;
                 cc_nxt[CC_F_BIT] = 1'b1;
                 BS_nxt         =  1'b1; // ACK Interrupt
             end                
             INTTYPE_IRQ:
             begin
-                addr_nxt = `IRQ_VECTOR+16'H1;
+                addr_nxt = {iv[15:4], `IRQ_VECTOR}+16'H1;
                 cc_nxt[CC_I_BIT] = 1'b1;                
                 BS_nxt         =  1'b1; // ACK Interrupt
             end  
             INTTYPE_SWI:
             begin
-                addr_nxt = `SWI_VECTOR+16'H1;
+                addr_nxt = {iv[15:4], `SWI_VECTOR}+16'H1;
                 cc_nxt[CC_F_BIT] = 1'b1;
                 cc_nxt[CC_I_BIT] = 1'b1;
                 rLIC = 1'b1;
             end                  
             INTTYPE_FIRQ:
             begin
-                addr_nxt = `FIRQ_VECTOR+16'H1;
+                addr_nxt = {iv[15:4], `FIRQ_VECTOR}+16'H1;
                 cc_nxt[CC_F_BIT] = 1'b1;                                
                 cc_nxt[CC_I_BIT] = 1'b1;
                 BS_nxt         =  1'b1; // ACK Interrupt
             end                  
             INTTYPE_SWI2:
             begin
-                addr_nxt = `SWI2_VECTOR+16'H1;
+                addr_nxt = {iv[15:4], `SWI2_VECTOR}+16'H1;
                 rLIC = 1'b1;                
             end                  
             INTTYPE_SWI3:
             begin
-                addr_nxt = `SWI3_VECTOR+16'H1;
+                addr_nxt = {iv[15:4], `SWI3_VECTOR}+16'H1;
                 rLIC = 1'b1;
             end                
             default:
@@ -4097,7 +4142,7 @@ begin
     begin
         addr_nxt = pc;
         cc_nxt = {1'b1, (cc[6:0] & Inst2[6:0])}; // Set E flag, AND CC with CWAI argument
-        tmp_nxt = 16'H00FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC
+        tmp_nxt = 16'H01FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC
 
         NextState_nxt = CPUSTATE_CWAI_POST;
         rAVMA = 1'b0;
