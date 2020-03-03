@@ -24,6 +24,7 @@ module mc6809s2(
     input   [7:0] D,
     output  [7:0] DOut,
     output  [15:0] ADDR,
+    output  [23:0] PADDR,
     output  RnW,
     input   CLK,
     output  BS,
@@ -38,10 +39,10 @@ module mc6809s2(
     input   nHALT,
     input   nDMABREQ,
     input   [15:0] Intvector,
-    output  [111:0] RegData
+    output  [127:0] RegData
 );
 
- mc6809iv corecpu(.D(D), .DOut(DOut), .ADDR(ADDR), .RnW(RnW), .CLK(CLK), .BS(BS), .BA(BA), .nIRQ(nIRQ), .nFIRQ(nFIRQ), .nNMI(nNMI), .AVMA(AVMA), .BUSY(BUSY), .LIC(LIC), .nRESET(nRESET),
+ mc6809iv corecpu(.D(D), .DOut(DOut), .ADDR(ADDR), .PADDR(PADDR), .RnW(RnW), .CLK(CLK), .BS(BS), .BA(BA), .nIRQ(nIRQ), .nFIRQ(nFIRQ), .nNMI(nNMI), .AVMA(AVMA), .BUSY(BUSY), .LIC(LIC), .nRESET(nRESET),
                  .nDMABREQ(nDMABREQ), .nHALT(nHALT), .Intvector(Intvector), .RegData(RegData) );
 
 endmodule

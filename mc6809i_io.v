@@ -47,6 +47,7 @@ module mc6809iv
     input   [7:0]  D,
     output  [7:0]  DOut,
     output  [15:0] ADDR,
+    output  [23:0] PADDR,
     output  RnW,
     input   CLK,
     output  BS,
@@ -61,12 +62,18 @@ module mc6809iv
     input   nRESET,
     input   nDMABREQ,
     input   [15:0] Intvector,
-    output  [111:0] RegData
+    output  [127:0] RegData
 );
 
 reg     [7:0]  DOutput;
 
 assign DOut = DOutput;
+
+wire    [15:0] rADDR;
+assign ADDR = rADDR;
+
+reg     [11:0] Bankedaddr [0:15];
+assign PADDR = { Bankedaddr[rADDR[15:12]], rADDR[11:0] }
 
 reg     RnWOut;         // Combinatorial     
 
@@ -112,6 +119,8 @@ reg     [15:0]          x;
 reg     [15:0]          y;
 reg     [15:0]          u;
 reg     [15:0]          s;
+reg     [15:0]          v;
+reg     [15:0]          ba;
 reg     [15:0]          pc;
 reg     [7:0]           dp;
 reg     [7:0]           cc;
@@ -127,9 +136,10 @@ assign  RegData[31:16] = x;
 assign  RegData[47:32] = y;
 assign  RegData[63:48] = s;
 assign  RegData[79:64] = u;
-assign  RegData[87:80] = cc;
-assign  RegData[95:88] = dp;
-assign  RegData[111:96] = pc;
+assign  RegData[95:80] = v;
+assign  RegData[103:96] = cc;
+assign  RegData[111:104] = dp;
+assign  RegData[127:112] = pc;
 
 
 
@@ -140,6 +150,8 @@ reg     [15:0]          x_nxt;
 reg     [15:0]          y_nxt;
 reg     [15:0]          u_nxt;
 reg     [15:0]          s_nxt;
+reg     [15:0]          v_nxt;
+reg     [15:0]          ba_nxt;
 reg     [15:0]          pc_nxt;
 reg     [7:0]           dp_nxt;
 reg     [7:0]           cc_nxt;
@@ -154,7 +166,7 @@ reg                     BA_nxt;
 // for ADDR, BS/BA, assign them to the flops
 assign BS = BS_nxt;
 assign BA = BA_nxt;
-assign ADDR=addr_nxt;
+assign rADDR=addr_nxt;
 
 localparam CC_E=  8'H80;
 localparam CC_F=  8'H40;
@@ -600,6 +612,9 @@ begin
         y <= y_nxt;
         s <= s_nxt;
         u <= u_nxt;
+        v <= v_nxt;
+        Bankedaddr[ba_nxt[3:0]] <= ba_nxt[15:4];
+        ba <= ba_nxt;
         cc <= cc_nxt;
         dp <= dp_nxt;
         pc <= pc_nxt;
@@ -1410,11 +1425,13 @@ localparam EXGTFR_REG_S             =  4'H4;
 localparam EXGTFR_REG_PC            =  4'H5;
 // W 0x6
 // V 0x7
+localparam EXGTFR_REG_V             =  4'H7;
 localparam EXGTFR_REG_A             =  4'H8;
 localparam EXGTFR_REG_B             =  4'H9;
 localparam EXGTFR_REG_CC            =  4'HA;
 localparam EXGTFR_REG_DP            =  4'HB;
 localparam EXGTFR_REG_IV            =  4'HC;
+localparam EXGTFR_REG_BA            =  4'HD;
 // E 0xe
 // F 0xf
 
@@ -1627,6 +1644,8 @@ begin
                 EXGTFRRegister   =  u;
             EXGTFR_REG_S:
                 EXGTFRRegister   =  s;
+            EXGTFR_REG_V:
+                EXGTFRRegister   =  v;
             EXGTFR_REG_PC:
                 EXGTFRRegister   =  pc_p1; // For both EXG and TFR, this is used on the 2nd byte in the instruction's cycle.  The PC intended to transfer is actually the next byte.
             EXGTFR_REG_DP:
@@ -1639,6 +1658,8 @@ begin
                 EXGTFRRegister   =  {8'HFF, cc};
             EXGTFR_REG_IV:
                 EXGTFRRegister   =  iv;
+            EXGTFR_REG_BA:
+                EXGTFRRegister   =  ba;
             default:
                 EXGTFRRegister   =  16'H0;                                       
         endcase
@@ -1678,6 +1699,8 @@ begin
     y_nxt      =  y;
     s_nxt      =  s;
     u_nxt      =  u;
+    v_nxt      =  v;
+    ba_nxt      =  ba;
     cc_nxt     =  cc;
     dp_nxt     =  dp;
     pc_nxt     =  pc;
@@ -1709,6 +1732,22 @@ begin
     case (CpuState)
     CPUSTATE_RESET:
     begin
+        Bankedaddr[0] = 12'H0;
+        Bankedaddr[1] = 12'H1;
+        Bankedaddr[2] = 12'H2;
+        Bankedaddr[3] = 12'H3;
+        Bankedaddr[4] = 12'H4;
+        Bankedaddr[5] = 12'H5;
+        Bankedaddr[6] = 12'H6;
+        Bankedaddr[7] = 12'H7;
+        Bankedaddr[8] = 12'H8;
+        Bankedaddr[9] = 12'H9;
+        Bankedaddr[10] = 12'HA;
+        Bankedaddr[11] = 12'HB;
+        Bankedaddr[12] = 12'HC;
+        Bankedaddr[13] = 12'HD;
+        Bankedaddr[14] = 12'HE;
+        Bankedaddr[15] = 12'HF;
         addr_nxt   =  16'HFFFF;
         a_nxt      =  0;
         b_nxt      =  0;
@@ -1716,6 +1755,8 @@ begin
         y_nxt      =  0;
         s_nxt      =  16'HFFFD;    // Take care about removing the reset of S.  There's logic depending on the delta between s and s_nxt to clear NMIMask.
         u_nxt      =  0;
+        v_nxt      =  16'HFFFF;
+        ba_nxt     =  0;
         cc_nxt     =  CC_F | CC_I; // reset disables interrupts
         dp_nxt     =  0;
         ea_nxt     =  16'HFFFF;
@@ -2058,6 +2099,8 @@ begin
                                     u_nxt  =  EXGTFRRegA;
                                 EXGTFR_REG_S:
                                     s_nxt  =  EXGTFRRegA;
+                                EXGTFR_REG_V:
+                                    v_nxt  =  EXGTFRRegA;
                                 EXGTFR_REG_PC:
                                     pc_nxt =  EXGTFRRegA;
                                 EXGTFR_REG_DP:
@@ -2070,6 +2113,8 @@ begin
                                     cc_nxt =  EXGTFRRegA[7:0];
                                 EXGTFR_REG_IV:
                                     iv_nxt =  EXGTFRRegA;
+                                EXGTFR_REG_BA:
+                                    ba_nxt =  EXGTFRRegA;
                                 default:
                                 begin
                                 end
@@ -2093,6 +2138,8 @@ begin
                                     u_nxt  =  EXGTFRRegB;
                                 EXGTFR_REG_S:
                                     s_nxt  =  EXGTFRRegB;
+                                EXGTFR_REG_V:
+                                    v_nxt  =  EXGTFRRegB;
                                 EXGTFR_REG_PC:
                                     pc_nxt =  EXGTFRRegB;
                                 EXGTFR_REG_DP:
@@ -2105,6 +2152,8 @@ begin
                                     cc_nxt =  EXGTFRRegB[7:0];
                                 EXGTFR_REG_IV:
                                     iv_nxt =  EXGTFRRegB;
+                                EXGTFR_REG_BA:
+                                    ba_nxt =  EXGTFRRegB;
                                 default:
                                 begin
                                 end
@@ -2120,6 +2169,8 @@ begin
                                     u_nxt  =  EXGTFRRegA;
                                 EXGTFR_REG_S:
                                     s_nxt  =  EXGTFRRegA;
+                                EXGTFR_REG_V:
+                                    v_nxt  =  EXGTFRRegA;
                                 EXGTFR_REG_PC:
                                     pc_nxt =  EXGTFRRegA;
                                 EXGTFR_REG_DP:
@@ -2132,6 +2183,8 @@ begin
                                     cc_nxt =  EXGTFRRegA[7:0];
                                 EXGTFR_REG_IV:
                                     iv_nxt =  EXGTFRRegA;
+                                EXGTFR_REG_BA:
+                                    ba_nxt =  EXGTFRRegA;
                                 default:
                                 begin
                                 end
