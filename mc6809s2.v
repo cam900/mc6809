@@ -39,6 +39,7 @@ module mc6809s2(
     input   nHALT,
     input   nDMABREQ,
     input   [15:0] Intvector,
+    input   [15:0] BAinit,
     output  [127:0] RegData
 );
 

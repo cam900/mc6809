@@ -62,6 +62,7 @@ module mc6809iv
     input   nRESET,
     input   nDMABREQ,
     input   [15:0] Intvector,
+    input   [15:0] BAinit,
     output  [127:0] RegData
 );
 
@@ -1748,6 +1749,7 @@ begin
         Bankedaddr[13] = 12'HD;
         Bankedaddr[14] = 12'HE;
         Bankedaddr[15] = 12'HF;
+        Bankedaddr[BAinit[3:0]] = BAinit[15:4];
         addr_nxt   =  16'HFFFF;
         a_nxt      =  0;
         b_nxt      =  0;
@@ -1756,7 +1758,7 @@ begin
         s_nxt      =  16'HFFFD;    // Take care about removing the reset of S.  There's logic depending on the delta between s and s_nxt to clear NMIMask.
         u_nxt      =  0;
         v_nxt      =  16'HFFFF;
-        ba_nxt     =  0;
+        ba_nxt     =  BAinit;
         cc_nxt     =  CC_F | CC_I; // reset disables interrupts
         dp_nxt     =  0;
         ea_nxt     =  16'HFFFF;
