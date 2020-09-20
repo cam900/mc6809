@@ -576,23 +576,39 @@ end
 // analyzer on the 6809 to determine how many cycles before a new instruction an interrupt (or /HALT & /DMABREQ)
 // had to be asserted to be noted instead of the next instruction running start to finish.  
 // 
+always @(negedge CLK)
+begin
+    NMISample <= nNMI;
+    
+    IRQSample <= nIRQ;
+
+    FIRQSample <= nFIRQ;
+
+    HALTSample <= nHALT;
+    
+    DMABREQSample <= nDMABREQ;
+
+        
+end
+
+
 reg rnRESET=0; // The latched version of /RESET, useful 1 clock after it's latched
 always @(posedge CLK)
 begin
     rnRESET <= nRESET;
     
-    NMISample2 <= nNMI;
+    NMISample2 <= NMISample;
     
-    IRQSample2 <= nIRQ;
+    IRQSample2 <= IRQSample;
     IRQLatched <= IRQSample2;
 
-    FIRQSample2 <= nFIRQ;
+    FIRQSample2 <= FIRQSample;
     FIRQLatched <= FIRQSample2;
 
-    HALTSample2 <= nHALT;
+    HALTSample2 <= HALTSample;
     HALTLatched <= HALTSample2;
 
-    DMABREQSample2 <= nDMABREQ;
+    DMABREQSample2 <= DMABREQSample;
     DMABREQLatched <= DMABREQSample2;
 
 
