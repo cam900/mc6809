@@ -558,21 +558,21 @@ begin
 end
 
 //
-// The 6809 specs say that the CPU control signals are sampled on the falling edge of Q.
+// The 6809 specs say that the CPU control signals are sampled on the falling edge of CLK.
 // It also says that the interrupts require 1 cycle of synchronization time.  
 // That's vague, as it doesn't say where "1 cycle" starts or ends.  Starting from the
-// falling edge of Q, the next cycle notices an assertion.  From checking a hard 6809 on
-// an analyzer, what they really mean is that it's sampled on the falling edge of Q, 
-// but there's a one cycle delay from the falling edge of E (0.25 clocks from the falling edge of Q
+// falling edge of CLK, the next cycle notices an assertion.  From checking a hard 6809 on
+// an analyzer, what they really mean is that it's sampled on the falling edge of CLK, 
+// but there's a one cycle delay from the rising edge of CLK (0.25 clocks from the falling edge of CLK
 // where the signals were sampled) before it can be noticed.  
-// So, SIGNALSample is the latched value at the falling edge of Q
-//     SIGNALSample2 is the latched value at the falling edge of E (0.25 clocks after the line above)
-//     SIGNALLatched is the latched value at the falling edge of E (1 cycle after the line above)
+// So, SIGNALSample is the latched value at the falling edge of CLK
+//     SIGNALSample2 is the latched value at the rising edge of CLK (0.25 clocks after the line above)
+//     SIGNALLatched is the latched value at the rising edge of CLK (1 cycle after the line above)
 //
 // /HALT and /DMABREQ are delayed one cycle less than interrupts.  The 6809 specs infer these details,
 // but don't list the point-of-reference they're written from (for instance, they say that an interrupt requires
-// a cycle for synchronization; however, it isn't clear whether that's from the falling Q to the next falling Q,
-// a complete intermediate cycle, the falling E to the next falling E, etc.) - which, in the end, required an
+// a cycle for synchronization; however, it isn't clear whether that's from the falling CLK to the next falling CLK,
+// a complete intermediate cycle, the rising CLK to the next rising CLK, etc.) - which, in the end, required an
 // analyzer on the 6809 to determine how many cycles before a new instruction an interrupt (or /HALT & /DMABREQ)
 // had to be asserted to be noted instead of the next instruction running start to finish.  
 // 
