@@ -4366,7 +4366,7 @@ begin
             end
             else
                 tmp_nxt[0] = 1'b0;
-        end 
+        end
         else if (tmp[1])                    // A
         begin
             addr_nxt = (tmp[14]) ? u : s;
