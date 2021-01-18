@@ -44,6 +44,6 @@ module mc6809s2(
 );
 
  mc6809iv corecpu(.D(D), .DOut(DOut), .ADDR(ADDR), .PADDR(PADDR), .RnW(RnW), .CLK(CLK), .BS(BS), .BA(BA), .nIRQ(nIRQ), .nFIRQ(nFIRQ), .nNMI(nNMI), .AVMA(AVMA), .BUSY(BUSY), .LIC(LIC), .nRESET(nRESET),
-                 .nDMABREQ(nDMABREQ), .nHALT(nHALT), .Intvector(Intvector), .RegData(RegData) );
+                 .nDMABREQ(nDMABREQ), .nHALT(nHALT), .Intvector(Intvector), .BAinit(BAinit), .RegData(RegData) );
 
 endmodule
