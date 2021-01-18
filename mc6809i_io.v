@@ -4360,9 +4360,9 @@ begin
             if (tmp[12] == 1'b1) // This pull is from an RTI, the E flag comes from the retrieved CC, and set the tmp_nxt accordingly, indicating what other registers to retrieve
             begin
                 if (D[CC_E_BIT])
-                    tmp_nxt[10:0] = 10'H7FE;     // Retrieve all registers (ENTIRE) [CC is already retrieved]
+                    tmp_nxt[10:0] = 11'H7FE;     // Retrieve all registers (ENTIRE) [CC is already retrieved]
                 else
-                    tmp_nxt[10:0] = 10'H600;     // Retrieve PC and CC [CC is already retrieved]
+                    tmp_nxt[10:0] = 11'H600;     // Retrieve PC and CC [CC is already retrieved]
             end
             else
                 tmp_nxt[0] = 1'b0;
