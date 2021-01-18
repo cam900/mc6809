@@ -1956,21 +1956,21 @@ begin
             EXGTFR_REG_V:
                 EXGTFRRegister   =  v;
             EXGTFR_REG_DP:
-                EXGTFRRegister   =  {8'HFF, dp};
+                EXGTFRRegister   =  {dp, dp};
             EXGTFR_REG_A:
-                EXGTFRRegister   =  {8'HFF, a};
+                EXGTFRRegister   =  {a, a};
             EXGTFR_REG_B:
-                EXGTFRRegister   =  {8'HFF, b};
+                EXGTFRRegister   =  {b, b};
             EXGTFR_REG_CC:
-                EXGTFRRegister   =  {8'HFF, cc};
+                EXGTFRRegister   =  {cc, cc};
             EXGTFR_REG_IV:
                 EXGTFRRegister   =  iv;
             EXGTFR_REG_BANK:
                 EXGTFRRegister   =  bank;
             EXGTFR_REG_E:
-                EXGTFRRegister   =  {8'HFF, e};
+                EXGTFRRegister   =  {e, e};
             EXGTFR_REG_F:
-                EXGTFRRegister   =  {8'HFF, f};
+                EXGTFRRegister   =  {f, f};
             default:
                 EXGTFRRegister   =  16'H0;
         endcase
@@ -2465,20 +2465,20 @@ begin
                                     {e_nxt,f_nxt}  =  EXGTFRRegA;
                                 EXGTFR_REG_V:
                                     v_nxt  =  EXGTFRRegA;
-                                EXGTFR_REG_DP:
-                                    dp_nxt =  EXGTFRRegA[7:0];
                                 EXGTFR_REG_A:
-                                    a_nxt  =  EXGTFRRegA[7:0];
+                                    a_nxt  =  EXGTFRRegA[15:8];
                                 EXGTFR_REG_B:
                                     b_nxt  =  EXGTFRRegA[7:0];
                                 EXGTFR_REG_CC:
                                     cc_nxt =  EXGTFRRegA[7:0];
+                                EXGTFR_REG_DP:
+                                    dp_nxt =  EXGTFRRegA[15:8];
                                 EXGTFR_REG_IV:
                                     iv_nxt =  EXGTFRRegA;
                                 EXGTFR_REG_BANK:
                                     bank_nxt =  EXGTFRRegA;
                                 EXGTFR_REG_E:
-                                    e_nxt  =  EXGTFRRegA[7:0];
+                                    e_nxt  =  EXGTFRRegA[15:8];
                                 EXGTFR_REG_F:
                                     f_nxt  =  EXGTFRRegA[7:0];
                                 default:
@@ -2508,20 +2508,20 @@ begin
                                     {e_nxt,f_nxt}  =  EXGTFRRegB;
                                 EXGTFR_REG_V:
                                     v_nxt  =  EXGTFRRegB;
-                                EXGTFR_REG_DP:
-                                    dp_nxt =  EXGTFRRegB[7:0];
                                 EXGTFR_REG_A:
-                                    a_nxt  =  EXGTFRRegB[7:0];
+                                    a_nxt  =  EXGTFRRegB[15:8];
                                 EXGTFR_REG_B:
                                     b_nxt  =  EXGTFRRegB[7:0];
                                 EXGTFR_REG_CC:
                                     cc_nxt =  EXGTFRRegB[7:0];
+                                EXGTFR_REG_DP:
+                                    dp_nxt =  EXGTFRRegB[15:8];
                                 EXGTFR_REG_IV:
                                     iv_nxt =  EXGTFRRegB;
                                 EXGTFR_REG_BANK:
                                     bank_nxt =  EXGTFRRegB;
                                 EXGTFR_REG_E:
-                                    e_nxt  =  EXGTFRRegB[7:0];
+                                    e_nxt  =  EXGTFRRegB[15:8];
                                 EXGTFR_REG_F:
                                     f_nxt  =  EXGTFRRegB[7:0];
                                 default:
@@ -2545,20 +2545,20 @@ begin
                                     {e_nxt,f_nxt}  =  EXGTFRRegA;
                                 EXGTFR_REG_V:
                                     v_nxt  =  EXGTFRRegA;
-                                EXGTFR_REG_DP:
-                                    dp_nxt =  EXGTFRRegA[7:0];
                                 EXGTFR_REG_A:
-                                    a_nxt  =  EXGTFRRegA[7:0];
+                                    a_nxt  =  EXGTFRRegA[15:8];
                                 EXGTFR_REG_B:
                                     b_nxt  =  EXGTFRRegA[7:0];
                                 EXGTFR_REG_CC:
                                     cc_nxt =  EXGTFRRegA[7:0];
+                                EXGTFR_REG_DP:
+                                    dp_nxt =  EXGTFRRegA[15:8];
                                 EXGTFR_REG_IV:
                                     iv_nxt =  EXGTFRRegA;
                                 EXGTFR_REG_BANK:
                                     bank_nxt =  EXGTFRRegA;
                                 EXGTFR_REG_E:
-                                    e_nxt  =  EXGTFRRegA[7:0];
+                                    e_nxt  =  EXGTFRRegA[15:8];
                                 EXGTFR_REG_F:
                                     f_nxt  =  EXGTFRRegA[7:0];
                                 default:
@@ -2632,7 +2632,7 @@ begin
 										EXGTFR_REG_S:
 											s_nxt[7:0]   =  ALU[7:0];
 										EXGTFR_REG_PC:
-											pc_nxt[7:0]   =  ALU[7:0]; // For both EXG and TFR, this is used on the 2nd byte in the instruction's cycle.  The PC intended to transfer is actually the next byte.
+											pc_nxt[7:0]   =  ALU[7:0];
 										EXGTFR_REG_W:
 											f_nxt[7:0]   =  ALU[7:0];
 										EXGTFR_REG_V:
@@ -2674,17 +2674,17 @@ begin
 									EXGTFR_REG_V:
 										ALU16_A   =  v;
 									EXGTFR_REG_DP:
-										ALU16_A   =  {dp, 8'HFF};
+										ALU16_A   =  {dp, 8'H00};
 									EXGTFR_REG_A:
-										ALU16_A   =  {8'HFF, a};
+										ALU16_A   =  {a, b};
 									EXGTFR_REG_B:
-										ALU16_A   =  {8'HFF, b};
+										ALU16_A   =  {a, b};
 									EXGTFR_REG_CC:
-										ALU16_A   =  {8'HFF, cc};
+										ALU16_A   =  {8'H00, cc};
 									EXGTFR_REG_E:
-										ALU16_A   =  {8'HFF, e};
+										ALU16_A   =  {e, f};
 									EXGTFR_REG_F:
-										ALU16_A   =  {8'HFF, f};
+										ALU16_A   =  {e, f};
 									default:
 										ALU16_A   =  16'H0;
         						endcase
@@ -2706,17 +2706,17 @@ begin
 									EXGTFR_REG_V:
 										ALU16_B   =  v;
 									EXGTFR_REG_DP:
-										ALU16_B   =  {dp, 8'HFF};
+										ALU16_B   =  {dp, 8'H00};
 									EXGTFR_REG_A:
-										ALU16_B   =  {8'HFF, a};
+										ALU16_B   =  {a, b};
 									EXGTFR_REG_B:
-										ALU16_B   =  {8'HFF, b};
+										ALU16_B   =  {a, b};
 									EXGTFR_REG_CC:
-										ALU16_B   =  {8'HFF, cc};
+										ALU16_B   =  {8'H00, cc};
 									EXGTFR_REG_E:
-										ALU16_B   =  {8'HFF, e};
+										ALU16_B   =  {e, f};
 									EXGTFR_REG_F:
-										ALU16_B   =  {8'HFF, f};
+										ALU16_B   =  {e, f};
 									default:
 										ALU16_B   =  16'H0;
         						endcase
@@ -2744,15 +2744,15 @@ begin
 										EXGTFR_REG_DP:
 											dp_nxt   =  ALU16[15:8];
 										EXGTFR_REG_A:
-											a_nxt   =  ALU16[7:0];
+											{a_nxt, b_nxt}   =  ALU16[15:0];
 										EXGTFR_REG_B:
-											b_nxt   =  ALU16[7:0];
+											{a_nxt, b_nxt}   =  ALU16[15:0];
 										EXGTFR_REG_CC:
 											cc_nxt   =  ALU16[7:0];
 										EXGTFR_REG_E:
-											e_nxt   =  ALU16[7:0];
+											{e_nxt,f_nxt}   =  ALU16[15:0];
 										EXGTFR_REG_F:
-											f_nxt   =  ALU16[7:0];
+											{e_nxt,f_nxt}   =  ALU16[15:0];
 										default:
         							endcase
 								end
@@ -4359,11 +4359,10 @@ begin
             cc_nxt = D[7:0];
             if (tmp[12] == 1'b1) // This pull is from an RTI, the E flag comes from the retrieved CC, and set the tmp_nxt accordingly, indicating what other registers to retrieve
             begin
-                tmp_nxt[11] = 1'b1;
                 if (D[CC_E_BIT])
-                    tmp_nxt[7:0] = 8'HFE;     // Retrieve all registers (ENTIRE) [CC is already retrieved]
+                    tmp_nxt[10:0] = 10'H7FE;     // Retrieve all registers (ENTIRE) [CC is already retrieved]
                 else
-                    tmp_nxt[7:0] = 8'H80;     // Retrieve PC and CC [CC is already retrieved]
+                    tmp_nxt[10:0] = 10'H600;     // Retrieve PC and CC [CC is already retrieved]
             end
             else
                 tmp_nxt[0] = 1'b0;
@@ -4548,7 +4547,7 @@ begin
         NMIClear_nxt = 1'b1;
         addr_nxt = pc;
         // tmp stands as the bits to push to the stack
-        tmp_nxt = 16'H28FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC; set LIC on every push 
+        tmp_nxt = 16'H27FF; // Save to the S stack, PC, U, Y, X, DP, F, E, B, A, CC; set LIC on every push 
         NextState_nxt = CPUSTATE_IRQ_DONTCARE2;
         rAVMA = 1'b0;
         CpuState_nxt = CPUSTATE_IRQ_DONTCARE;
@@ -4559,7 +4558,7 @@ begin
     CPUSTATE_IRQ_START:
     begin
         addr_nxt = pc;
-        tmp_nxt = 16'H38FF; // Save to the W, S stack, PC, U, Y, X, DP, B, A, CC; set LIC on every push 
+        tmp_nxt = 16'H37FF; // Save to the S stack, PC, U, Y, X, DP, F, E, B, A, CC; set LIC on every push 
         NextState_nxt = CPUSTATE_IRQ_DONTCARE2;
         rAVMA = 1'b1;
         CpuState_nxt = CPUSTATE_IRQ_DONTCARE;
@@ -4570,7 +4569,7 @@ begin
     CPUSTATE_FIRQ_START:
     begin
         addr_nxt = pc;
-        tmp_nxt = 16'H2881; // Save to the S stack, PC, CC; set LIC on every push 
+        tmp_nxt = 16'H2701; // Save to the S stack, PC, CC; set LIC on every push 
         NextState_nxt = CPUSTATE_IRQ_DONTCARE2;
         rAVMA = 1'b1;
         CpuState_nxt = CPUSTATE_IRQ_DONTCARE;
@@ -4581,7 +4580,7 @@ begin
     CPUSTATE_SWI_START:
     begin
         addr_nxt = pc;
-        tmp_nxt = 16'H18FF; // Save to the W, S stack, PC, U, Y, X, DP, B, A, CC
+        tmp_nxt = 16'H17FF; // Save to the W, S stack, PC, U, Y, X, DP, F, E, B, A, CC
 
         NextState_nxt = CPUSTATE_IRQ_DONTCARE2;
         rAVMA = 1'b1;
