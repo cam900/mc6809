@@ -40,7 +40,7 @@ module mc6809s2(
     input   nDMABREQ,
     input   [15:0] Intvector,
     input   [15:0] BAinit,
-    output  [127:0] RegData
+    output  [143:0] RegData
 );
 
  mc6809iv corecpu(.D(D), .DOut(DOut), .ADDR(ADDR), .PADDR(PADDR), .RnW(RnW), .CLK(CLK), .BS(BS), .BA(BA), .nIRQ(nIRQ), .nFIRQ(nFIRQ), .nNMI(nNMI), .AVMA(AVMA), .BUSY(BUSY), .LIC(LIC), .nRESET(nRESET),

@@ -63,7 +63,7 @@ module mc6809iv
     input   nDMABREQ,
     input   [15:0] Intvector,
     input   [15:0] BAinit,
-    output  [127:0] RegData
+    output  [143:0] RegData
 );
 
 reg     [7:0]  DOutput;
@@ -116,6 +116,8 @@ assign RnW = RnWOut;
 // The last-latched copy.
 reg     [7:0]           a;
 reg     [7:0]           b;
+reg     [7:0]           e;
+reg     [7:0]           f;
 reg     [15:0]          x;
 reg     [15:0]          y;
 reg     [15:0]          u;
@@ -133,20 +135,24 @@ reg     [15:0]          iv;
 // Debug ability to export register contents
 assign  RegData[7:0] = a;
 assign  RegData[15:8] = b;
-assign  RegData[31:16] = x;
-assign  RegData[47:32] = y;
-assign  RegData[63:48] = s;
-assign  RegData[79:64] = u;
-assign  RegData[95:80] = v;
-assign  RegData[103:96] = cc;
-assign  RegData[111:104] = dp;
-assign  RegData[127:112] = pc;
+assign  RegData[23:16] = e;
+assign  RegData[31:24] = f;
+assign  RegData[47:32] = x;
+assign  RegData[63:48] = y;
+assign  RegData[79:64] = s;
+assign  RegData[95:80] = u;
+assign  RegData[111:96] = v;
+assign  RegData[119:112] = cc;
+assign  RegData[127:120] = dp;
+assign  RegData[143:128] = pc;
 
 
 
 // The values as being calculated
 reg     [7:0]           a_nxt;
 reg     [7:0]           b_nxt;
+reg     [7:0]           e_nxt;
+reg     [7:0]           f_nxt;
 reg     [15:0]          x_nxt;
 reg     [15:0]          y_nxt;
 reg     [15:0]          u_nxt;
@@ -306,8 +312,6 @@ localparam CPUSTATE_LD16_LO            =    7'd48;
 
 localparam CPUSTATE_ST16_LO            =    7'd49;
 localparam CPUSTATE_ALU16_LO           =    7'd50;
-
-
 
 
 localparam CPUSTATE_JSR_DONTCARE       =    7'd53;
@@ -625,6 +629,8 @@ begin
         // CPU registers latch from the combinatorial circuit
         a <= a_nxt;
         b <= b_nxt;
+        e <= e_nxt;
+        f <= f_nxt;
         x <= x_nxt;
         y <= y_nxt;
         s <= s_nxt;
@@ -740,35 +746,37 @@ endfunction
 ///////////////////////////////////////////////////////////////////
 // Is this an 8-bit Store?
 
-localparam ST8_REG_A   =  1'b0;
-localparam ST8_REG_B   =  1'b1;
+localparam ST8_REG_A   =  3'b0;
+localparam ST8_REG_B   =  3'b1;
+localparam ST8_REG_E   =  3'b2;
+localparam ST8_REG_F   =  3'b3;
 
-function [1:0] IsST8(input   [7:0] inst);
-reg     regnum;
+function [3:0] IsST8(input Page2, input Page3, input   [7:0] inst);
+reg     [2:0] regnum;
 reg     IsStore;
 begin
     
     IsStore        =  1'b0;
-    regnum =  1'b1;
+    regnum =  2'b1;
     
     if ( (Inst1 == 8'H97) || (Inst1 == 8'HA7) || (Inst1 == 8'HB7) )
     begin
-        IsStore    =  1'b1;
-        regnum     =  1'b0;
+        IsStore    =  Page2 ? 1'b0 : 1'b1;
+        regnum     =  {Page2, Page3, 2'b0};
     end
     else if ( (Inst1 == 8'HD7) || (Inst1 == 8'HE7) || (Inst1 == 8'HF7) )
     begin
-        IsStore    =  1'b1;
-        regnum     =  1'b1;
+        IsStore    =  Page2 ? 1'b0 : 1'b1;
+        regnum     =  {Page2, Page3, 2'b1};
     end
     IsST8  =  {IsStore, regnum};
 end
 endfunction
 
 wire    IsStore8;
-wire    Store8RegisterNum;
+wire    [2:0] Store8RegisterNum;
 
-assign  {IsStore8, Store8RegisterNum}  =  IsST8(Inst1);        
+assign  {IsStore8, Store8RegisterNum}  =  IsST8(InstPage2, InstPage3, Inst1);        
 
 
 /////////////////////////////////////////////////////////////////
@@ -779,6 +787,7 @@ localparam ST16_REG_Y  =  3'd1;
 localparam ST16_REG_U  =  3'd2;
 localparam ST16_REG_S  =  3'd3;
 localparam ST16_REG_D  =  3'd4;
+localparam ST16_REG_W  =  3'd5;
 
 
 function [3:0] IsST16(input   [7:0] inst);
@@ -812,6 +821,11 @@ begin
     begin
         IsStore        =  1;
         regnum =  ST16_REG_D;
+    end
+    else if (InstPage2 && ((inst == 8'H97) || (inst == 8'HA7) || (inst == 8'HB7)))
+    begin
+        IsStore        =  1;
+        regnum =  ST16_REG_W;
     end
     
     IsST16 =  {IsStore, regnum};
@@ -891,12 +905,15 @@ localparam ALU16_REG_Y =  3'd1;
 localparam ALU16_REG_U =  3'd2;
 localparam ALU16_REG_S =  3'd3;
 localparam ALU16_REG_D =  3'd4;
+localparam ALU16_REG_W =  3'd5;
 
 function [2:0] ALU16RegFromInst(input   Page2, input   Page3, input   [7:0] inst);
 reg     [2:0] srcreg;
 begin
     srcreg =  3'b111;       // default
     casex ({Page2, Page3, inst}) // Note pattern for the matching below
+        10'b1010xx0001:         // 1081, 1091, 10A1, 10B1 CMPW 
+            srcreg =  ALU16_REG_W;
         10'b1010xx0011:         // 1083, 1093, 10A3, 10B3 CMPD 
             srcreg =  ALU16_REG_D;
         10'b1010xx1100:         // 108C, 109C, 10AC, 10BC CMPY
@@ -910,9 +927,13 @@ begin
         
         10'b0011xx0011:         // C3, D3, E3, F3 ADDD
             srcreg =  ALU16_REG_D;
+        10'b1010xx1011:         // 108B, 109B, 10AB, 10BB ADDW
+            srcreg =  ALU16_REG_W;
         
         10'b0011xx1100:         // CC, DC, EC, FC LDD
             srcreg =  ALU16_REG_D;            
+        10'b1010xx0110:         // 1086, 1096, 10A6, 10B6 LDW
+            srcreg =  ALU16_REG_W;            
         10'b0010xx1110:         // 8E LDX, 9E LDX, AE LDX, BE LDX
             srcreg =  ALU16_REG_X;
         10'b0011xx1110:         // CE LDU, DE LDU, EE LDU, FE LDU
@@ -923,7 +944,18 @@ begin
             srcreg =  ALU16_REG_S;               
         10'b0010xx0011:         // 83, 93, A3, B3 SUBD
             srcreg =  ALU16_REG_D;
-        
+        10'b1010xx0000:         // 1080, 1090, 10A0, 10B0 SUBW
+            srcreg =  ALU16_REG_W;
+
+        10'b1010xx0010:         // 1082, 1092, 10A2, 10B2 SBCD 
+            srcreg =  ALU16_REG_D;
+
+        10'b1010xx0100:         // 1084, 1094, 10A4, 10B4 ANDD 
+            srcreg =  ALU16_REG_D;
+
+        10'b1010xx0101:         // 1085, 1095, 10A5, 10B5 BITD 
+            srcreg =  ALU16_REG_D;
+
         10'H03A:                // 3A ABX
             srcreg =  ALU16_REG_X;
         10'H030:                // 30 LEAX
@@ -934,6 +966,18 @@ begin
             srcreg =  ALU16_REG_S;
         10'H033:                // 32 LEAU
             srcreg =  ALU16_REG_U;
+
+        10'b100100xxxx:         // 104x NEGD, COMD, LSRD, RORD, ASRD, ASLD, ROLD, DECD, INCD, TSTD, CLRD
+            aluop  =  ALU16_REG_D;
+        10'b100101xxxx:         // 105x NEGW, COMW, LSRW, RORW, ASRW, ASLW, ROLW, DECW, INCW, TSTW, CLRW
+            aluop  =  ALU16_REG_W;
+
+        10'b1010xx0010:         // 1082, 1092, 10A2, 10B2 SBCD
+        10'b1010xx010x:         // 1084, 1094, 10A4, 10B4 ANDD, 1085, 1095, 10A5, 10B5 ANDD
+        10'b1010xx100x:         // 1088, 1098, 10A8, 10B8 EORD, 1089, 1099, 10A9, 10B9 ADCD
+        10'b1010xx1010:         // 108A, 109A, 10AA, 10BA ORD
+            aluop  =  ALU16_REG_D;
+
         default:
             srcreg =  3'b111;
     endcase
@@ -943,40 +987,63 @@ endfunction
 
 wire    [2:0] ALU16Reg     =  ALU16RegFromInst(InstPage2, InstPage3, Inst1);
 
-localparam  ALUOP16_SUB        =  3'H0;
-localparam  ALUOP16_ADD        =  3'H1;
-localparam  ALUOP16_LD         =  3'H2;
-localparam  ALUOP16_CMP        =  3'H3;
-localparam  ALUOP16_LEA        =  3'H4;
-localparam  ALUOP16_INVALID    =  3'H7;
+localparam  ALUOP16_NEG        =  5'H0;
+localparam  ALUOP16_COM        =  5'H3;
+localparam  ALUOP16_LSR        =  5'H4;
+localparam  ALUOP16_ROR        =  5'H6;
+localparam  ALUOP16_ASR        =  5'H7;
+localparam  ALUOP16_ASL        =  5'H8;
+localparam  ALUOP16_ROL        =  5'H9;
+localparam  ALUOP16_DEC        =  5'HA;
+localparam  ALUOP16_INC        =  5'HC;
+localparam  ALUOP16_TST        =  5'HD;
+localparam  ALUOP16_CLR        =  5'HF;
 
-function [3:0] ALU16OpFromInst(input   Page2, input   Page3, input   [7:0] inst);
-reg     [2:0] aluop;
+localparam  ALUOP16_SUB        =  5'H10;
+localparam  ALUOP16_CMP        =  5'H11;
+localparam  ALUOP16_SBC        =  5'H12;
+localparam  ALUOP16_AND        =  5'H14;
+//localparam  ALUOP16_BIT        =  5'H15;
+localparam  ALUOP16_LD         =  5'H16;
+localparam  ALUOP16_EOR        =  5'H18;
+localparam  ALUOP16_ADC        =  5'H19;
+localparam  ALUOP16_OR         =  5'H1A;
+localparam  ALUOP16_ADD        =  5'H1B;
+localparam  ALUOP16_LEA        =  5'H1C;
+localparam  ALUOP16_INVALID    =  5'H1F;
+
+function [5:0] ALU16OpFromInst(input   Page2, input   Page3, input   [7:0] inst);
+reg     [4:0] aluop;
 reg     writeback;
 begin
-    aluop  =  3'b111;
+    aluop  =  5'b11111;
     writeback  =  1'b1;
     casex ({Page2, Page3, inst})
+        10'b1010xx0001:         // 1081, 1091, 10A1, 10B1 CMPW
+        begin 
+            aluop  =  ALUOP16_CMP;
+            writeback  =  1'b0;
+        end
         10'b1010xx0011:         // 1083, 1093, 10A3, 10B3 CMPD
         begin 
             aluop  =  ALUOP16_CMP;
             writeback  =  1'b0;
-        end                
+        end
         10'b1010xx1100:         // 108C, 109C, 10AC, 10BC CMPY
         begin 
             aluop      =  ALUOP16_CMP;
             writeback  =  1'b0;
-        end                
+        end
         10'b0110xx0011:         // 1183, 1193, 11A3, 11B3 CMPU
         begin 
             aluop      =  ALUOP16_CMP;
             writeback  =  1'b0;
-        end                
+        end
         10'b0110xx1100:         // 118C, 119C, 11AC, 11BC CMPS
         begin 
             aluop      =  ALUOP16_CMP;
             writeback  =  1'b0;
-        end                
+        end
         10'b0010xx1100:         // 8C,9C,AC,BC CMPX
         begin 
             aluop      =  ALUOP16_CMP;
@@ -985,9 +1052,14 @@ begin
         
         10'b0011xx0011:         // C3, D3, E3, F3 ADDD
             aluop  =  ALUOP16_ADD;
+        10'b1010xx1011:         // 108B, 109B, 10AB, 10BB ADDW
+            aluop  =  ALUOP16_ADD;
+        
         
         10'b0011xx1100:         // CC, DC, EC, FC LDD
-            aluop  =  ALUOP16_LD;                
+            aluop  =  ALUOP16_LD;
+        10'b1010xx0110:         // 1086, 1096, 10A6, 10B6 LDW
+            aluop  =  ALUOP16_LD;
         10'b001xxx1110:         // 8E LDX, 9E LDX, AE LDX, BE LDX, CE LDU, DE LDU, EE LDU, FE LDU
             aluop  =  ALUOP16_LD;
         10'b101xxx1110:         // 108E LDY, 109E LDY, 10AE LDY, 10BE LDY, 10CE LDS, 10DE LDS, 10EE LDS, 10FE LDS
@@ -995,12 +1067,46 @@ begin
         
         10'b0010xx0011:         // 83, 93, A3, B3 SUBD
             aluop  =  ALUOP16_SUB;
-        
+        10'b1010xx0000:         // 1080, 1090, 10A0, 10B0 SUBW
+            aluop  =  ALUOP16_SUB;
+
+        10'b1010xx0010:         // 1082, 1092, 10A2, 10B2 SBCD
+            aluop  =  ALUOP16_SBC;
+
+        10'b1010xx010x:         // 1084, 1094, 10A4, 10B4 ANDD, 1085, 1095, 10A5, 10B5 BITD
+		begin
+            aluop  =  ALUOP16_AND;
+            writeback  =  ~inst[0];
+		end
+
+        10'b1010xx1000:         // 1088, 1098, 10A8, 10B8 EORD
+            aluop  =  ALUOP16_EOR;
+
+        10'b1010xx1001:         // 1088, 1098, 10A8, 10B8 ADCD
+            aluop  =  ALUOP16_ADC;
+
+        10'b1010xx1010:         // 1088, 1098, 10A8, 10B8 ORD
+            aluop  =  ALUOP16_OR;
+
         10'H03A:                // 3A ABX
             aluop  =  ALUOP16_ADD;
-        
+
         10'b00001100xx:         // $30-$33, LEAX, LEAY, LEAS, LEAU
             aluop  =  ALUOP16_LEA;
+
+		// 1040 NEGD, 1043 COMD, 1044 LSRD, 1046 RORD, 1047 ASRD, 1048 ASLD, 1049 ROLD, 104A DECD, 104C INCD, 104D TSTD, 104F CLRD
+		// 1050 NEGW, 1053 COMW, 1054 LSRW, 1056 RORW, 1057 ASRW, 1058 ASLW, 1059 ROLW, 105A DECW, 105C INCW, 105D TSTW, 105F CLRW
+        10'b10010xxxxx:
+		begin
+			if ((inst[3:0] != 4'H1) && (inst[3:0] != 4'H2) && (inst[3:0] != 4'H5) && (inst[3:0] != 4'HB) && (inst[3:0] != 4'HE))
+			begin
+	            aluop  =  {1'H0, inst[3:0]};
+				if (inst[3:0] == 4'HD) // TST
+					writeback  =  1'b0;
+			end else begin
+            	aluop  =  ALUOP16_INVALID;
+			end
+		end
 
         default:
             aluop  =  ALUOP16_INVALID;
@@ -1010,13 +1116,13 @@ end
 endfunction
 
 wire    ALU16OpWriteback;
-wire    [2:0]  ALU16Opcode;
+wire    [4:0]  ALU16Opcode;
 
 assign  {ALU16OpWriteback, ALU16Opcode}    =  ALU16OpFromInst(InstPage2, InstPage3, Inst1);  
 
-wire    IsALU16Opcode  =  (ALU16Opcode != 3'b111);          
+wire    IsALU16Opcode  =  (ALU16Opcode != 5'b11111);          
 
-function [23:0] ALU16Inst(input   [2:0] operation16, input   [15:0] a_arg, input   [15:0] b_arg, input   [7:0] cc_arg);
+function [23:0] ALU16Inst(input   [4:0] operation16, input   [15:0] a_arg, input   [15:0] b_arg, input   [7:0] cc_arg);
 reg     [7:0]    cc_out;
 reg     [15:0]   ALUFn;
 reg     carry;
@@ -1024,6 +1130,46 @@ reg     borrow;
 begin
     cc_out =  cc_arg;
     case (operation16)
+        ALUOP16_NEG:
+        begin
+            ALUFn[15:0]             =  ~a_arg + 1'b1;
+            cc_out[CC_C_BIT]       =  (ALUFn[15:0] != 8'H0000);
+            cc_out[CC_V_BIT]       =  (a_arg == 8'H8000);
+        end
+
+        ALUOP16_LSL:
+        begin
+            {cc_out[CC_C_BIT], ALUFn}  =  {a_arg, 1'b0};
+            cc_out[CC_V_BIT]   =  a_arg[15] ^ a_arg[14];
+        end
+
+        ALUOP16_LSR:
+        begin
+            {ALUFn, cc_out[CC_C_BIT]}  =  {1'b0, a_arg}; 
+        end
+
+        ALUOP16_ASR:
+        begin
+            {ALUFn, cc_out[CC_C_BIT]}  =  {a_arg[15], a_arg}; 
+        end    
+        
+        ALUOP16_ROL:
+        begin
+            {cc_out[CC_C_BIT], ALUFn}  =  {a_arg, cc_arg[CC_C_BIT]};
+            cc_out[CC_V_BIT]   =  a_arg[15] ^ a_arg[14];
+        end
+        
+        ALUOP16_ROR:
+        begin
+            {ALUFn, cc_out[CC_C_BIT]}  =  {cc_arg[CC_C_BIT], a_arg}; 
+        end
+
+        ALUOP16_OR:
+        begin
+            ALUFn[15:0] =  (a_arg | b_arg);
+            cc_out[CC_V_BIT]   =  1'b0;
+        end
+
         ALUOP16_ADD:
         begin
             {cc_out[CC_C_BIT], ALUFn} =  {1'b0, a_arg} + b_arg;
@@ -1035,19 +1181,76 @@ begin
             {cc_out[CC_C_BIT], ALUFn} =  {1'b0, a_arg} - {1'b0, b_arg};
             cc_out[CC_V_BIT]   =  (a_arg[15] & ~b_arg[15] & ~ALUFn[15]) | (~a_arg[15] & b_arg[15] & ALUFn[15]);
         end
+
+        ALUOP16_AND:
+        //ALUOP16_BIT:
+        begin
+            ALUFn[15:0] =  (a_arg & b_arg);
+            cc_out[CC_V_BIT]   =  1'b0;
+        end
+
+        ALUOP16_EOR:
+        begin
+            ALUFn[15:0] =  (a_arg ^ b_arg);
+            cc_out[CC_V_BIT]   =  1'b0;                
+        end
         
         ALUOP16_LD:
         begin
             ALUFn  =  b_arg;
             cc_out[CC_V_BIT]   =  1'b0;
         end
-        
+
         ALUOP16_CMP:
         begin
             {cc_out[CC_C_BIT], ALUFn} =  {1'b0, a_arg} - {1'b0, b_arg};
             cc_out[CC_V_BIT]   =  (a_arg[15] & ~b_arg[15] & ~ALUFn[15]) | (~a_arg[15] & b_arg[15] & ALUFn[15]);
         end
+
+        ALUOP16_COM:
+        begin
+            ALUFn  =  ~b_arg;
+            cc_out[CC_V_BIT]   =  1'b0;
+            cc_out[CC_C_BIT]   =  1'b1;
+        end
+
+        ALUOP16_ADC:
+        begin
+            {cc_out[CC_C_BIT], ALUFn[15:0]} =  {1'b0, a_arg} + {1'b0, b_arg} + cc_arg[CC_C_BIT];
+            cc_out[CC_V_BIT]   =  (a_arg[15] & b_arg[15] & ~ALUFn[15]) | (~a_arg[15] & ~b_arg[15] & ALUFn[15]);
+        end
         
+        ALUOP16_INC:
+        begin
+            {carry, ALUFn} =  {1'b0, a_arg} + 1'b1;
+            cc_out[CC_V_BIT]   =  (~a_arg[15] & ALUFn[15]);             
+        end
+
+        ALUOP16_DEC:
+        begin
+            {carry, ALUFn[15:0]}    =  {1'b0, a_arg} - 1'b1;
+            cc_out[CC_V_BIT]       =   (a_arg[15] & ~ALUFn[15]);
+        end
+
+        ALUOP16_CLR:
+        begin
+            ALUFn[15:0] =  16'H0000;
+            cc_out[CC_V_BIT]   =  1'b0;
+            cc_out[CC_C_BIT]   =  1'b0;
+        end
+
+        ALUOP16_TST:
+        begin
+            ALUFn[15:0] =  a_arg;
+            cc_out[CC_V_BIT]   =  1'b0;
+        end
+
+        ALUOP16_SBC:
+        begin
+            {cc_out[CC_C_BIT], ALUFn[15:0]} = {1'b0, a_arg} - {1'b0, b_arg} - cc_arg[CC_C_BIT];
+            cc_out[CC_V_BIT]   =   (a_arg[15] & ~b_arg[15] & ~ALUFn[15]) | (~a_arg[15] & b_arg[15] & ALUFn[15]);
+        end
+
         ALUOP16_LEA:
         begin
             ALUFn  =  a_arg;
@@ -1064,7 +1267,7 @@ begin
 end
 endfunction
 
-reg     [2:0]   ALU16_OP;
+reg     [4:0]   ALU16_OP;
 reg     [15:0]  ALU16_A;
 reg     [15:0]  ALU16_B;
 reg     [7:0]   ALU16_CC;     
@@ -1152,12 +1355,12 @@ begin
             {cc_out[CC_C_BIT], ALUFn}  =  {a_arg, 1'b0};
             cc_out[CC_V_BIT]   =  a_arg[7] ^ a_arg[6];
         end
-        
+
         ALUOP_LSR:
         begin
             {ALUFn, cc_out[CC_C_BIT]}  =  {1'b0, a_arg}; 
         end
-        
+
         ALUOP_ASR:
         begin
             {ALUFn, cc_out[CC_C_BIT]}  =  {a_arg[7], a_arg}; 
@@ -1173,13 +1376,13 @@ begin
         begin
             {ALUFn, cc_out[CC_C_BIT]}  =  {cc_arg[CC_C_BIT], a_arg}; 
         end
-        
+
         ALUOP_OR:
         begin
             ALUFn[7:0] =  (a_arg | b_arg);
             cc_out[CC_V_BIT]   =  1'b0;
         end
-        
+
         ALUOP_ADD:
         begin
             {cc_out[CC_C_BIT], ALUFn[7:0]} =  {1'b0, a_arg} + {1'b0, b_arg};
@@ -1192,13 +1395,8 @@ begin
             {cc_out[CC_C_BIT], ALUFn[7:0]} = {1'b0, a_arg} - {1'b0, b_arg};
             cc_out[CC_V_BIT]   =   (a_arg[7] & ~b_arg[7] & ~ALUFn[7]) | (~a_arg[7] & b_arg[7] & ALUFn[7]);
         end
-        
+
         ALUOP_AND:
-        begin
-            ALUFn[7:0] =  (a_arg & b_arg);
-            cc_out[CC_V_BIT]   =  1'b0;
-        end
-        
         ALUOP_BIT:
         begin
             ALUFn[7:0] =  (a_arg & b_arg);
@@ -1236,38 +1434,38 @@ begin
             ALUFn[7:0] =  b_arg;
             cc_out[CC_V_BIT] = 1'b0;
         end
-        
+
         ALUOP_INC:
         begin
             {carry, ALUFn} =  {1'b0, a_arg} + 1'b1;
             cc_out[CC_V_BIT]   =  (~a_arg[7] & ALUFn[7]);             
         end
-        
+
         ALUOP_DEC:
         begin
             {carry, ALUFn[7:0]}    =  {1'b0, a_arg} - 1'b1;
             cc_out[CC_V_BIT]       =   (a_arg[7] & ~ALUFn[7]);
         end
-        
+
         ALUOP_CLR:
         begin
             ALUFn[7:0] =  8'H00;
             cc_out[CC_V_BIT]   =  1'b0;
             cc_out[CC_C_BIT]   =  1'b0;
         end
-        
+
         ALUOP_TST:
         begin
             ALUFn[7:0] =  a_arg;
             cc_out[CC_V_BIT]   =  1'b0;
         end
-        
+
         ALUOP_SBC:
         begin
             {cc_out[CC_C_BIT], ALUFn[7:0]} = {1'b0, a_arg} - {1'b0, b_arg} - cc_arg[CC_C_BIT];
             cc_out[CC_V_BIT]   =   (a_arg[7] & ~b_arg[7] & ~ALUFn[7]) | (~a_arg[7] & b_arg[7] & ALUFn[7]);
         end
-        
+
         default:
             ALUFn = 8'H00;
     
@@ -1295,7 +1493,7 @@ localparam TYPE_EXTENDED   =  3'd5;
 localparam TYPE_INVALID    =  3'd7;
 
 // Function to decode the addressing mode the instruction uses
-function [2:0] addressing_mode_type(input   [7:0] inst);
+function [2:0] addressing_mode_type(input Page2, input Page3, input   [7:0] inst);
 begin
     casex (inst)
     8'b0000???? :                 addressing_mode_type   =  TYPE_DIRECT;
@@ -1395,7 +1593,7 @@ begin
 end
 endfunction
 
-wire    [2:0]    AddrModeType   =  addressing_mode_type(Inst1);
+wire    [2:0]    AddrModeType   =  addressing_mode_type(InstPage2, InstPage3, Inst1);
 
 //////////////////////////////////////////////////
 
@@ -1407,6 +1605,7 @@ localparam OPCODE_INH_RTI           =  8'H3B;
 localparam OPCODE_INH_CWAI          =  8'H3C;
 localparam OPCODE_INH_MUL           =  8'H3D;
 localparam OPCODE_INH_SWI           =  8'H3F;
+localparam OPCODE_INH_SEXW          =  8'H14;
 localparam OPCODE_INH_SEX           =  8'H1D;
 localparam OPCODE_INH_NOP           =  8'H12;
 localparam OPCODE_INH_SYNC          =  8'H13;
@@ -1440,8 +1639,7 @@ localparam EXGTFR_REG_Y             =  4'H2;
 localparam EXGTFR_REG_U             =  4'H3;
 localparam EXGTFR_REG_S             =  4'H4;
 localparam EXGTFR_REG_PC            =  4'H5;
-// W 0x6
-// V 0x7
+localparam EXGTFR_REG_W             =  4'H6;
 localparam EXGTFR_REG_V             =  4'H7;
 localparam EXGTFR_REG_A             =  4'H8;
 localparam EXGTFR_REG_B             =  4'H9;
@@ -1449,10 +1647,15 @@ localparam EXGTFR_REG_CC            =  4'HA;
 localparam EXGTFR_REG_DP            =  4'HB;
 localparam EXGTFR_REG_IV            =  4'HC;
 localparam EXGTFR_REG_BA            =  4'HD;
-// E 0xe
-// F 0xf
+localparam EXGTFR_REG_E             =  4'HE;
+localparam EXGTFR_REG_F             =  4'HF;
 
-function IsALU8Set0(input   [7:0] instr);
+localparam ALU8_REG_A             =  3'H0;
+localparam ALU8_REG_B             =  3'H1;
+localparam ALU8_REG_E             =  3'H2;
+localparam ALU8_REG_F             =  3'H3;
+
+function IsALU8Set0(input Page2, input Page3, input   [7:0] instr);
 reg     result;
 reg     [3:0] hi;
 reg     [3:0] lo;
@@ -1468,11 +1671,11 @@ begin
     end
     else
         result =  0;
-    IsALU8Set0     =  result;            
+    IsALU8Set0     =  Page2 ? 0 : result;            
 end
 endfunction    
 
-function IsALU8Set1(input   [7:0] instr);
+function IsALU8Set1(input Page2, input Page3, input   [7:0] instr);
 reg     result;
 reg     [3:0] hi;
 reg     [3:0] lo;
@@ -1488,33 +1691,33 @@ begin
     end
     else
         result =  0;
-    IsALU8Set1     =  result;                
+    IsALU8Set1     =  Page2 ? 0 : result;                
 end
 endfunction
 
 // Determine if the instruction is performing an 8-bit op (ALU only)    
-function ALU8BitOp(input   [7:0] instr);
+function ALU8BitOp(input Page2, input Page3, input   [7:0] instr);
 begin
-    ALU8BitOp      =  IsALU8Set0(instr) | IsALU8Set1(instr);
+    ALU8BitOp      =  IsALU8Set0(Page2, Page3, instr) | IsALU8Set1(Page2, Page3, instr);
 end
 endfunction
 
-wire    Is8BitInst     =  ALU8BitOp(Inst1);
+wire    Is8BitInst     =  ALU8BitOp(InstPage2, InstPage3, Inst1);
 
-function IsRegA(input   [7:0] instr);
+function [2:0] IsRegA(input Page2, input Page3, input   [7:0] instr);
 reg     result;
 reg     [3:0]    hi;
 begin
     hi =  instr[7:4];
     if ((hi == 4'H4) || (hi == 4'H8) || (hi == 4'H9) || (hi == 4'HA) || (hi == 4'HB) )
-        result =  1;
+        result =  0; // A, E
     else
-        result =  0;
-    IsRegA =  result;
+        result =  1; // B, F
+    IsRegA =  {Page2, Page3, result};
 end
 endfunction
 
-wire    IsTargetRegA   =  IsRegA(Inst1);
+wire    [2:0] ALU8Target   =  { IsRegA(InstPage2, InstPage3, Inst1) };
 
 //
 //
@@ -1661,6 +1864,8 @@ begin
                 EXGTFRRegister   =  u;
             EXGTFR_REG_S:
                 EXGTFRRegister   =  s;
+            EXGTFR_REG_W:
+                EXGTFRRegister   =  {e, f};
             EXGTFR_REG_V:
                 EXGTFRRegister   =  v;
             EXGTFR_REG_PC:
@@ -1677,6 +1882,10 @@ begin
                 EXGTFRRegister   =  iv;
             EXGTFR_REG_BA:
                 EXGTFRRegister   =  ba;
+            EXGTFR_REG_E:
+                EXGTFRRegister   =  {8'HFF, e};
+            EXGTFR_REG_F:
+                EXGTFRRegister   =  {8'HFF, f};
             default:
                 EXGTFRRegister   =  16'H0;                                       
         endcase
@@ -1712,6 +1921,8 @@ begin
     NextState_nxt = NextState;
     a_nxt      =  a;
     b_nxt      =  b;
+    e_nxt      =  e;
+    f_nxt      =  f;
     x_nxt      =  x;
     y_nxt      =  y;
     s_nxt      =  s;
@@ -1730,7 +1941,7 @@ begin
     ALU_CC     =  8'H00;
     ALU_OP     =  5'H00;
     
-    ALU16_OP   =  3'H0;
+    ALU16_OP   =  5'H0;
     ALU16_A    =  16'H0000;
     ALU16_B    =  16'H0000;
     ALU16_CC   =  8'H00;
@@ -1769,6 +1980,8 @@ begin
         addr_nxt   =  16'HFFFF;
         a_nxt      =  0;
         b_nxt      =  0;
+        e_nxt      =  0;
+        f_nxt      =  0;
         x_nxt      =  0;
         y_nxt      =  0;
         s_nxt      =  16'HFFFD;    // Take care about removing the reset of S.  There's logic depending on the delta between s and s_nxt to clear NMIMask.
@@ -2024,10 +2237,22 @@ begin
                     else if (Inst1 == OPCODE_INH_SEX)
                     begin
                         a_nxt = {8{b[7]}};
+                        cc_nxt[CC_N_BIT] = b[7];
+                        cc_nxt[CC_Z_BIT] = ({a_nxt, b_nxt} == 16'H0000);
                         rLIC = 1'b1; // Instruction done!
                         rAVMA = 1'b1;
                         CpuState_nxt = CPUSTATE_FETCH_I1;
-                        end
+                    end
+                    else if (Inst1 == OPCODE_INH_SEXW)
+                    begin
+                        a_nxt = {8{e[7]}};
+                        b_nxt = {8{e[7]}};
+                        cc_nxt[CC_N_BIT] = e[7];
+                        cc_nxt[CC_Z_BIT] = ({a_nxt, b_nxt, e_nxt, f_nxt} == 32'H00000000);
+                        rLIC = 1'b1; // Instruction done!
+                        rAVMA = 1'b1;
+                        CpuState_nxt = CPUSTATE_FETCH_I1;
+                    end
                     else if (Inst1 == OPCODE_INH_ABX)
                     begin
                         x_nxt  =  x + b;
@@ -2037,10 +2262,16 @@ begin
                     else
                     begin
                         ALU_OP =  ALU8Op; 
-                        if (IsTargetRegA)
-                            ALU_A  =  a;
-                        else
-                            ALU_A  =  b;
+                        case (ALU8Target)
+							ALU8_REG_A:
+                            	ALU_A  =  a;
+							ALU8_REG_B:
+                            	ALU_A  =  b;
+							ALU8_REG_E:
+                            	ALU_A  =  e;
+							ALU8_REG_F:
+                            	ALU_A  =  f;
+        				endcase
                         
                         ALU_B  =  0;
                         ALU_CC =  cc;
@@ -2048,10 +2279,16 @@ begin
                         
                         if (ALU8Writeback)
                         begin
-                            if (IsTargetRegA)
-                                a_nxt  =  ALU[7:0];
-                            else
-                                b_nxt  =  ALU[7:0];
+                        	case (ALU8Target)
+                            	ALU8_REG_A:
+                                	a_nxt  =  ALU[7:0];
+                            	ALU8_REG_B:
+                                	b_nxt  =  ALU[7:0];
+                            	ALU8_REG_E:
+                                	e_nxt  =  ALU[7:0];
+                            	ALU8_REG_F:
+                                	f_nxt  =  ALU[7:0];
+        					endcase
                         end
                         rLIC = 1'b1; // Instruction done!
                         rAVMA = 1'b1;
@@ -2117,6 +2354,8 @@ begin
                                     u_nxt  =  EXGTFRRegA;
                                 EXGTFR_REG_S:
                                     s_nxt  =  EXGTFRRegA;
+                                EXGTFR_REG_W:
+                                    {e_nxt,f_nxt}  =  EXGTFRRegA;
                                 EXGTFR_REG_V:
                                     v_nxt  =  EXGTFRRegA;
                                 EXGTFR_REG_PC:
@@ -2133,6 +2372,10 @@ begin
                                     iv_nxt =  EXGTFRRegA;
                                 EXGTFR_REG_BA:
                                     ba_nxt =  EXGTFRRegA;
+                                EXGTFR_REG_E:
+                                    e_nxt  =  EXGTFRRegA[7:0];
+                                EXGTFR_REG_F:
+                                    f_nxt  =  EXGTFRRegA[7:0];
                                 default:
                                 begin
                                 end
@@ -2156,6 +2399,8 @@ begin
                                     u_nxt  =  EXGTFRRegB;
                                 EXGTFR_REG_S:
                                     s_nxt  =  EXGTFRRegB;
+                                EXGTFR_REG_W:
+                                    {e_nxt,f_nxt}  =  EXGTFRRegB;
                                 EXGTFR_REG_V:
                                     v_nxt  =  EXGTFRRegB;
                                 EXGTFR_REG_PC:
@@ -2172,6 +2417,10 @@ begin
                                     iv_nxt =  EXGTFRRegB;
                                 EXGTFR_REG_BA:
                                     ba_nxt =  EXGTFRRegB;
+                                EXGTFR_REG_E:
+                                    e_nxt  =  EXGTFRRegB[7:0];
+                                EXGTFR_REG_F:
+                                    f_nxt  =  EXGTFRRegB[7:0];
                                 default:
                                 begin
                                 end
@@ -2187,6 +2436,8 @@ begin
                                     u_nxt  =  EXGTFRRegA;
                                 EXGTFR_REG_S:
                                     s_nxt  =  EXGTFRRegA;
+                                EXGTFR_REG_W:
+                                    {e_nxt,f_nxt}  =  EXGTFRRegA;
                                 EXGTFR_REG_V:
                                     v_nxt  =  EXGTFRRegA;
                                 EXGTFR_REG_PC:
@@ -2203,6 +2454,10 @@ begin
                                     iv_nxt =  EXGTFRRegA;
                                 EXGTFR_REG_BA:
                                     ba_nxt =  EXGTFRRegA;
+                                EXGTFR_REG_E:
+                                    e_nxt  =  EXGTFRRegA[7:0];
+                                EXGTFR_REG_F:
+                                    f_nxt  =  EXGTFRRegA[7:0];
                                 default:
                                 begin
                                 end
@@ -2214,11 +2469,17 @@ begin
                     // Determine if this is an 8-bit ALU operation.
                     else if (Is8BitInst)
                     begin
-                        ALU_OP =  ALU8Op;     
-                        if (IsTargetRegA)
-                            ALU_A  =  a;
-                        else
-                            ALU_A  =  b;
+                        ALU_OP =  ALU8Op;
+                        case (ALU8Target)
+							ALU8_REG_A:
+                            	ALU_A  =  a;
+							ALU8_REG_B:
+                            	ALU_A  =  b;
+							ALU8_REG_E:
+                            	ALU_A  =  e;
+							ALU8_REG_F:
+                            	ALU_A  =  f;
+						endcase
                         
                         ALU_B  =  Inst2_nxt;
                         ALU_CC =  cc;
@@ -2226,10 +2487,16 @@ begin
                         
                         if (ALU8Writeback)
                         begin
-                            if (IsTargetRegA)
-                                a_nxt  =  ALU[7:0];
-                            else
-                                b_nxt  =  ALU[7:0];
+                            case (ALU8Target)
+								ALU8_REG_A:
+                                	a_nxt  =  ALU[7:0];
+								ALU8_REG_B:
+                                	b_nxt  =  ALU[7:0];
+								ALU8_REG_E:
+                                	e_nxt  =  ALU[7:0];
+								ALU8_REG_F:
+                                	f_nxt  =  ALU[7:0];
+							endcase
                         end
                         rLIC = 1'b1; // Instruction done!               
                         rAVMA = 1'b1;
@@ -2517,6 +2784,8 @@ begin
                 ALU16_A    =  x;
             ALU16_REG_D:
                 ALU16_A    =  {a, b};
+            ALU16_REG_W:
+                ALU16_A    =  {e, f};
             ALU16_REG_Y:
                 ALU16_A    =  y;
             ALU16_REG_U:
@@ -2534,6 +2803,8 @@ begin
                     {cc_nxt, x_nxt}        =  ALU16; 
                 ALU16_REG_D:
                     {cc_nxt, a_nxt, b_nxt} =  ALU16;
+                ALU16_REG_W:
+                    {cc_nxt, e_nxt, f_nxt} =  ALU16;
                 ALU16_REG_Y:
                     {cc_nxt, y_nxt}        =  ALU16;
                 ALU16_REG_U:
@@ -2592,24 +2863,36 @@ begin
         if (IsALU8Set1(Inst1))
         begin
             addr_nxt   =  ea;
-            
+
             ALU_OP     =  ALU8Op;
             ALU_B      =  D[7:0];
             ALU_CC     =  cc;
-            
-            if (IsTargetRegA)
-                ALU_A  =  a;
-            else
-                ALU_A  =  b;
+
+            case (ALU8Target)
+				ALU8_REG_A:
+                	ALU_A  =  a;
+				ALU8_REG_B:
+                	ALU_A  =  b;
+				ALU8_REG_E:
+                	ALU_A  =  e;
+				ALU8_REG_F:
+                	ALU_A  =  f;
+			endcase
             
             cc_nxt =  ALU[15:8];
             
             if ( (ALU8Writeback) )
             begin
-                if (IsTargetRegA)
-                    a_nxt  =  ALU[7:0];
-                else
-                    b_nxt  =  ALU[7:0];
+                case (ALU8Target)
+					ALU8_REG_A:
+                    	a_nxt  =  ALU[7:0];
+					ALU8_REG_B:
+                    	b_nxt  =  ALU[7:0];
+					ALU8_REG_E:
+                    	e_nxt  =  ALU[7:0];
+					ALU8_REG_F:
+                    	f_nxt  =  ALU[7:0];
+				endcase
             end
 
             rLIC = 1'b1; // Instruction done!             
@@ -2626,7 +2909,7 @@ begin
             ALU_OP     =  ALUOP_LD;  // load has the same CC characteristics as store
             ALU_A      =  8'H00;
             ALU_CC     =  cc;
-            
+
             case (Store8RegisterNum)
                 ST8_REG_A:
                 begin
@@ -2635,11 +2918,19 @@ begin
                 end
                 ST8_REG_B:
                 begin
-                    DOutput   =  b;                                                
+                    DOutput   =  b;
                     ALU_B  =  b;
                 end
-
-
+                ST8_REG_E:
+                begin
+                    DOutput   =  e;
+                    ALU_B  =  e;
+                end
+                ST8_REG_F:
+                begin
+                    DOutput   =  f;
+                    ALU_B  =  f;
+                end
             endcase
             
             cc_nxt =  ALU[15:8];
@@ -2660,6 +2951,8 @@ begin
                     x_nxt[15:8]    =  D[7:0];
                 ALU16_REG_D:
                     a_nxt          =  D[7:0];
+                ALU16_REG_W:
+                    e_nxt          =  D[7:0];
                 ALU16_REG_Y:
                     y_nxt[15:8]    =  D[7:0];
                 ALU16_REG_S:
@@ -2711,6 +3004,11 @@ begin
                 begin
                     DOutput[7:0]  =  a[7:0];
                     ALU16_B    =  {a,b};
+                end
+                ST16_REG_W:
+                begin
+                    DOutput[7:0]  =  e[7:0];
+                    ALU16_B    =  {e,f};
                 end
                 default:
                 begin
@@ -2847,6 +3145,11 @@ begin
                 b_nxt      =  D[7:0];
                 ALU16_B[15:8] = a;
             end
+            ALU16_REG_W:
+            begin
+                f_nxt      =  D[7:0];
+                ALU16_B[15:8] = e;
+            end
             ALU16_REG_Y:
             begin
                 y_nxt[7:0] =  D[7:0];
@@ -2894,6 +3197,8 @@ begin
                 DOutput[7:0]  =  s[7:0];
             ST16_REG_D:
                 DOutput[7:0]  =  b[7:0];
+            ST16_REG_W:
+                DOutput[7:0]  =  f[7:0];
             default:
             begin
             end
@@ -2919,6 +3224,8 @@ begin
                 ALU16_A        =  x;
             ALU16_REG_D:
                 ALU16_A        =  {a, b};
+            ALU16_REG_W:
+                ALU16_A        =  {e, f};
             ALU16_REG_Y:
                 ALU16_A        =  y;
             ALU16_REG_S:
@@ -2937,6 +3244,8 @@ begin
                     {cc_nxt, x_nxt}        =  ALU16; 
                 ALU16_REG_D:
                     {cc_nxt, a_nxt, b_nxt} =  ALU16;
+                ALU16_REG_W:
+                    {cc_nxt, e_nxt, f_nxt} =  ALU16;
                 ALU16_REG_Y:
                     {cc_nxt, y_nxt}        =  ALU16;
                 ALU16_REG_U:
