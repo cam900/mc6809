@@ -123,7 +123,7 @@ reg     [15:0]          y;
 reg     [15:0]          u;
 reg     [15:0]          s;
 reg     [15:0]          v;
-reg     [15:0]          ba;
+reg     [15:0]          bank;
 reg     [15:0]          pc;
 reg     [7:0]           dp;
 reg     [7:0]           cc;
@@ -158,7 +158,7 @@ reg     [15:0]          y_nxt;
 reg     [15:0]          u_nxt;
 reg     [15:0]          s_nxt;
 reg     [15:0]          v_nxt;
-reg     [15:0]          ba_nxt;
+reg     [15:0]          bank_nxt;
 reg     [15:0]          pc_nxt;
 reg     [7:0]           dp_nxt;
 reg     [7:0]           cc_nxt;
@@ -636,8 +636,8 @@ begin
         s <= s_nxt;
         u <= u_nxt;
         v <= v_nxt;
-        Bankedaddr[ba_nxt[3:0]] <= ba_nxt[15:4];
-        ba <= ba_nxt;
+        Bankedaddr[bank_nxt[3:0]] <= bank_nxt[15:4];
+        bank <= bank_nxt;
         cc <= cc_nxt;
         dp <= dp_nxt;
         pc <= pc_nxt;
@@ -674,21 +674,25 @@ localparam IDX_REG_Y   =  3'd1;
 localparam IDX_REG_U   =  3'd2;
 localparam IDX_REG_S   =  3'd3;
 localparam IDX_REG_PC  =  3'd4;
+localparam IDX_REG_W   =  3'd5;
 
-localparam IDX_MODE_POSTINC1   =  4'd0;
-localparam IDX_MODE_POSTINC2   =  4'd1;
-localparam IDX_MODE_PREDEC1    =  4'd2;
-localparam IDX_MODE_PREDEC2    =  4'd3;
-localparam IDX_MODE_NOOFFSET   =  4'd4;
-localparam IDX_MODE_B_OFFSET   =  4'd5;
-localparam IDX_MODE_A_OFFSET   =  4'd6;
-localparam IDX_MODE_5BIT_OFFSET=  4'd7;    // Special case, not bit pattern 7; the offset sits in the bit pattern
-localparam IDX_MODE_8BIT_OFFSET=  4'd8;
-localparam IDX_MODE_16BIT_OFFSET   =  4'd9;
-localparam IDX_MODE_D_OFFSET       =  4'd11;
-localparam IDX_MODE_8BIT_OFFSET_PC =  4'd12;
-localparam IDX_MODE_16BIT_OFFSET_PC=  4'd13;
-localparam IDX_MODE_EXTENDED_INDIRECT  =  4'd15;
+localparam IDX_MODE_POSTINC1   =  5'd0;
+localparam IDX_MODE_POSTINC2   =  5'd1;
+localparam IDX_MODE_PREDEC1    =  5'd2;
+localparam IDX_MODE_PREDEC2    =  5'd3;
+localparam IDX_MODE_NOOFFSET   =  5'd4;
+localparam IDX_MODE_B_OFFSET   =  5'd5;
+localparam IDX_MODE_A_OFFSET   =  5'd6;
+localparam IDX_MODE_E_OFFSET   =  5'd7;
+localparam IDX_MODE_5BIT_OFFSET=  5'd31;    // Special case, not bit pattern 7; the offset sits in the bit pattern
+localparam IDX_MODE_8BIT_OFFSET=  5'd8;
+localparam IDX_MODE_16BIT_OFFSET   =  5'd9;
+localparam IDX_MODE_F_OFFSET       =  5'd10;
+localparam IDX_MODE_D_OFFSET       =  5'd11;
+localparam IDX_MODE_8BIT_OFFSET_PC =  5'd12;
+localparam IDX_MODE_16BIT_OFFSET_PC=  5'd13;
+localparam IDX_MODE_W_OFFSET       =  5'd14;
+localparam IDX_MODE_EXTENDED_INDIRECT  =  5'd15;
 
 // Return:
 //     Register base [3 bits]
@@ -711,10 +715,25 @@ begin
     begin
         mode   =  postbyte[3:0];
         indirect   =  postbyte[4];
-    end            
+    end
     if ((mode != IDX_MODE_8BIT_OFFSET_PC) && (mode != IDX_MODE_16BIT_OFFSET_PC))
         regnum[2:0]    =  postbyte[6:5];
-    else
+    else if ((postbyte[4:0] == 5'H0F) || (postbyte[4:0] == 5'H10))
+	begin
+		if (postbyte[6])
+		begin
+			if (postbyte[5])
+				mode = IDX_MODE_PREDEC2;
+			else
+				mode = IDX_MODE_POSTINC2;
+		end else begin
+			if (postbyte[5])
+				mode = IDX_MODE_16BIT_OFFSET;
+			else
+				mode = IDX_MODE_NOOFFSET;
+		end
+        regnum[2:0]    =  IDX_REG_W;
+	end else
         regnum[2:0]    =  IDX_REG_PC;
     
     IndexDecode    =  {indirect, mode, regnum};
@@ -869,7 +888,7 @@ wire    IsSpecialImmediate =  IsSpecialImm(Inst1);
 
 /////////////////////////////////////////////////////////////////
 // Is this a one-byte instruction?  [The 6809 reads 2 bytes for every instruction, minimum (it can read more).  On a one-byte, we have to ensure that we haven't skipped the PC ahead.
-function IsOneByteInstruction(input   [7:0] inst);
+function IsOneByteInstruction(input Page2, input Page3, input   [7:0] inst);
 reg     is;
 reg     [3:0] hi;
 reg     [3:0] lo;
@@ -906,6 +925,7 @@ localparam ALU16_REG_U =  3'd2;
 localparam ALU16_REG_S =  3'd3;
 localparam ALU16_REG_D =  3'd4;
 localparam ALU16_REG_W =  3'd5;
+localparam ALU16_REG_IMM =  3'd6;
 
 function [2:0] ALU16RegFromInst(input   Page2, input   Page3, input   [7:0] inst);
 reg     [2:0] srcreg;
@@ -978,6 +998,8 @@ begin
         10'b1010xx1010:         // 108A, 109A, 10AA, 10BA ORD
             aluop  =  ALU16_REG_D;
 
+		10'b1000110xxx:         // Inter-register operation
+			aluop  =  ALU16_REG_IMM;
         default:
             srcreg =  3'b111;
     endcase
@@ -986,6 +1008,8 @@ end
 endfunction
 
 wire    [2:0] ALU16Reg     =  ALU16RegFromInst(InstPage2, InstPage3, Inst1);
+
+wire    IsALU16Imm     =  (ALU16Reg == 3'b110);
 
 localparam  ALUOP16_NEG        =  5'H0;
 localparam  ALUOP16_COM        =  5'H3;
@@ -1108,6 +1132,26 @@ begin
 			end
 		end
 
+		// inter-register operation
+		10'b1000110000:         // ADDR
+			aluop  =  ALUOP16_ADD;
+		10'b1000110001:         // ADCR
+			aluop  =  ALUOP16_ADC;
+		10'b1000110010:         // SUBR
+			aluop  =  ALUOP16_SUB;
+		10'b1000110011:         // SBCR
+			aluop  =  ALUOP16_SBC;
+		10'b1000110100:         // ANDR
+			aluop  =  ALUOP16_AND;
+		10'b1000110101:         // ORR
+			aluop  =  ALUOP16_OR;
+		10'b1000110110:         // EORR
+			aluop  =  ALUOP16_EOR;
+		10'b1000110111:         // CMPR
+		begin
+			aluop  =  ALUOP16_CMP;
+            writeback  =  1'b0;
+		end
         default:
             aluop  =  ALUOP16_INVALID;
     endcase
@@ -1120,7 +1164,7 @@ wire    [4:0]  ALU16Opcode;
 
 assign  {ALU16OpWriteback, ALU16Opcode}    =  ALU16OpFromInst(InstPage2, InstPage3, Inst1);  
 
-wire    IsALU16Opcode  =  (ALU16Opcode != 5'b11111);          
+wire    IsALU16Opcode  =  (ALU16Opcode != 5'b11111);
 
 function [23:0] ALU16Inst(input   [4:0] operation16, input   [15:0] a_arg, input   [15:0] b_arg, input   [7:0] cc_arg);
 reg     [7:0]    cc_out;
@@ -1304,21 +1348,43 @@ localparam        ALUOP_ADC  =  5'd25;
 localparam        ALUOP_OR   =  5'd26;
 localparam        ALUOP_ADD  =  5'd27;
 
-function [5:0] ALUOpFromInst(input   [7:0] inst);
+function [5:0] ALUOpFromInst(input Page2, input Page3, input   [7:0] inst);
 reg     [4:0] op;
 reg     writeback;
 begin
-    // Okay, this turned out to be simpler than I expected ...
-    op =  {inst[7], inst[3:0]};
+	if (Page2 && (inst[7:4] == 4'H3) && (inst[3:0] <= 4'H7))
+	begin
+		case (inst[2:0])
+			3'H0:
+				op = ALUOP_ADD;
+			3'H1:
+				op = ALUOP_ADC;
+			3'H2:
+				op = ALUOP_SUB;
+			3'H3:
+				op = ALUOP_SBC;
+			3'H4:
+				op = ALUOP_AND;
+			3'H5:
+				op = ALUOP_OR;
+			3'H6:
+				op = ALUOP_EOR;
+			3'H7:
+				op = ALUOP_CMP;
+		endcase
+	end else begin
+    	// Okay, this turned out to be simpler than I expected ...
+    	op =  {inst[7], inst[3:0]};
+	end
     case (op)
         ALUOP_CMP:
-            writeback  =  0;
+           	writeback  =  0;
         ALUOP_TST:
-            writeback  =  0;
+           	writeback  =  0;
         ALUOP_BIT:
-            writeback  =  0;
+           	writeback  =  0;
         default:
-            writeback  =  1;
+           	writeback  =  1;
     endcase
     ALUOpFromInst  =  {writeback, op};                        
 end
@@ -1327,7 +1393,7 @@ endfunction
 wire    [4:0] ALU8Op;
 wire    ALU8Writeback;
 
-assign  {ALU8Writeback, ALU8Op}    =  ALUOpFromInst(Inst1);
+assign  {ALU8Writeback, ALU8Op}    =  ALUOpFromInst(InstPage2, InstPage3, Inst1);
 
 reg     [7:0] ALU_A;
 reg     [7:0] ALU_B;
@@ -1349,7 +1415,7 @@ begin
             cc_out[CC_C_BIT]       =  (ALUFn[7:0] != 8'H00);
             cc_out[CC_V_BIT]       =  (a_arg == 8'H80);
         end
-        
+
         ALUOP_LSL:
         begin
             {cc_out[CC_C_BIT], ALUFn}  =  {a_arg, 1'b0};
@@ -1365,13 +1431,13 @@ begin
         begin
             {ALUFn, cc_out[CC_C_BIT]}  =  {a_arg[7], a_arg}; 
         end    
-        
+
         ALUOP_ROL:
         begin
             {cc_out[CC_C_BIT], ALUFn}  =  {a_arg, cc_arg[CC_C_BIT]};
             cc_out[CC_V_BIT]   =  a_arg[7] ^ a_arg[6];
         end
-        
+
         ALUOP_ROR:
         begin
             {ALUFn, cc_out[CC_C_BIT]}  =  {cc_arg[CC_C_BIT], a_arg}; 
@@ -1389,7 +1455,7 @@ begin
             cc_out[CC_V_BIT]   =  (a_arg[7] & b_arg[7] & ~ALUFn[7]) | (~a_arg[7] & ~b_arg[7] & ALUFn[7]);
             cc_out[CC_H_BIT]   =  a_arg[4] ^ b_arg[4] ^ ALUFn[4];
         end
-        
+
         ALUOP_SUB:
         begin
             {cc_out[CC_C_BIT], ALUFn[7:0]} = {1'b0, a_arg} - {1'b0, b_arg};
@@ -1402,33 +1468,33 @@ begin
             ALUFn[7:0] =  (a_arg & b_arg);
             cc_out[CC_V_BIT]   =  1'b0;
         end
-        
+
         ALUOP_EOR:
         begin
             ALUFn[7:0] =  (a_arg ^ b_arg);
             cc_out[CC_V_BIT]   =  1'b0;                
         end
-        
+
         ALUOP_CMP:
         begin
             {cc_out[CC_C_BIT], ALUFn[7:0]} = {1'b0, a_arg} - {1'b0, b_arg};
             cc_out[CC_V_BIT]   =   (a_arg[7] & ~b_arg[7] & ~ALUFn[7]) | (~a_arg[7] & b_arg[7] & ALUFn[7]);
         end
-        
+
         ALUOP_COM:
         begin
             ALUFn[7:0] =  ~a_arg;
             cc_out[CC_V_BIT]   =  1'b0;
             cc_out[CC_C_BIT]   =  1'b1;
         end
-        
+
         ALUOP_ADC:
         begin
             {cc_out[CC_C_BIT], ALUFn[7:0]} =  {1'b0, a_arg} + {1'b0, b_arg} + cc_arg[CC_C_BIT];
             cc_out[CC_V_BIT]   =  (a_arg[7] & b_arg[7] & ~ALUFn[7]) | (~a_arg[7] & ~b_arg[7] & ALUFn[7]);
             cc_out[CC_H_BIT]   =  a_arg[4] ^ b_arg[4] ^ ALUFn[4];
         end
-        
+
         ALUOP_LD:
         begin
             ALUFn[7:0] =  b_arg;
@@ -1468,7 +1534,7 @@ begin
 
         default:
             ALUFn = 8'H00;
-    
+
     endcase
     
     cc_out[CC_N_BIT]   =  ALUFn[7];
@@ -1537,14 +1603,29 @@ begin
     
     8'b0010????:                     addressing_mode_type   =  TYPE_RELATIVE;
     8'b0011????:
-    begin
+	if (Page2)
+	begin
+        casex(inst[3:0])
+        4'b0???:
+            addressing_mode_type   =  TYPE_IMMEDIATE;
+
+        4'b10??:
+            addressing_mode_type   =  TYPE_INHERENT;
+        
+        4'b1111:
+            addressing_mode_type   =  TYPE_INHERENT;
+        
+        default:
+            addressing_mode_type   =  TYPE_INVALID;
+        endcase
+	end else begin
         casex(inst[3:0])
         4'b00??:
             addressing_mode_type   =  TYPE_INDEXED;
         
         4'b01??:
             addressing_mode_type   =  TYPE_IMMEDIATE;
-        
+
         4'b1001:
             addressing_mode_type   =  TYPE_INHERENT;
         
@@ -1619,6 +1700,10 @@ localparam OPCODE_IMM_PSHS          =  8'H34;
 localparam OPCODE_IMM_PULS          =  8'H35;
 localparam OPCODE_IMM_PSHU          =  8'H36;
 localparam OPCODE_IMM_PULU          =  8'H37;
+localparam OPCODE_INH_PSHSW         =  8'H38;
+localparam OPCODE_INH_PULSW         =  8'H39;
+localparam OPCODE_INH_PSHUW         =  8'H3A;
+localparam OPCODE_INH_PULUW         =  8'H3B;
 
 localparam OPCODE_IMM_SUBD          =  8'H83;
 localparam OPCODE_IMM_CMPX          =  8'H8C;
@@ -1646,7 +1731,7 @@ localparam EXGTFR_REG_B             =  4'H9;
 localparam EXGTFR_REG_CC            =  4'HA;
 localparam EXGTFR_REG_DP            =  4'HB;
 localparam EXGTFR_REG_IV            =  4'HC;
-localparam EXGTFR_REG_BA            =  4'HD;
+localparam EXGTFR_REG_BANK          =  4'HD;
 localparam EXGTFR_REG_E             =  4'HE;
 localparam EXGTFR_REG_F             =  4'HF;
 
@@ -1864,12 +1949,12 @@ begin
                 EXGTFRRegister   =  u;
             EXGTFR_REG_S:
                 EXGTFRRegister   =  s;
+            EXGTFR_REG_PC:
+                EXGTFRRegister   =  pc_p1; // For both EXG and TFR, this is used on the 2nd byte in the instruction's cycle.  The PC intended to transfer is actually the next byte.
             EXGTFR_REG_W:
                 EXGTFRRegister   =  {e, f};
             EXGTFR_REG_V:
                 EXGTFRRegister   =  v;
-            EXGTFR_REG_PC:
-                EXGTFRRegister   =  pc_p1; // For both EXG and TFR, this is used on the 2nd byte in the instruction's cycle.  The PC intended to transfer is actually the next byte.
             EXGTFR_REG_DP:
                 EXGTFRRegister   =  {8'HFF, dp};
             EXGTFR_REG_A:
@@ -1880,14 +1965,14 @@ begin
                 EXGTFRRegister   =  {8'HFF, cc};
             EXGTFR_REG_IV:
                 EXGTFRRegister   =  iv;
-            EXGTFR_REG_BA:
-                EXGTFRRegister   =  ba;
+            EXGTFR_REG_BANK:
+                EXGTFRRegister   =  bank;
             EXGTFR_REG_E:
                 EXGTFRRegister   =  {8'HFF, e};
             EXGTFR_REG_F:
                 EXGTFRRegister   =  {8'HFF, f};
             default:
-                EXGTFRRegister   =  16'H0;                                       
+                EXGTFRRegister   =  16'H0;
         endcase
 end
 endfunction
@@ -1928,7 +2013,7 @@ begin
     s_nxt      =  s;
     u_nxt      =  u;
     v_nxt      =  v;
-    ba_nxt      =  ba;
+    bank_nxt      =  bank;
     cc_nxt     =  cc;
     dp_nxt     =  dp;
     pc_nxt     =  pc;
@@ -1987,7 +2072,7 @@ begin
         s_nxt      =  16'HFFFD;    // Take care about removing the reset of S.  There's logic depending on the delta between s and s_nxt to clear NMIMask.
         u_nxt      =  0;
         v_nxt      =  16'HFFFF;
-        ba_nxt     =  BAinit;
+        bank_nxt     =  BAinit;
         cc_nxt     =  CC_F | CC_I; // reset disables interrupts
         dp_nxt     =  0;
         ea_nxt     =  16'HFFFF;
@@ -2258,7 +2343,28 @@ begin
                         x_nxt  =  x + b;
                         rAVMA = 1'b0;
                         CpuState_nxt   =  CPUSTATE_ABX_DONTCARE;
-                    end                                                                        
+                    end
+                        else if ( InstPage2 && ((Inst1 == OPCODE_INH_PSHSW) | (Inst1 == OPCODE_INH_PSHUW)) )
+                        begin
+                            tmp_nxt[15] = 1'b0;
+                            tmp_nxt[14] = Inst1[1]; // Mark whether to save to U or S.
+                            tmp_nxt[13] = 1'b0; // Not pushing due to an interrupt.
+                            tmp_nxt[12:11] = 2'H00;
+                            tmp_nxt[10:0] = {11'H018}; // W
+                            rAVMA = 1'b0;
+                            CpuState_nxt = CPUSTATE_PSH_DONTCARE2;
+                            NextState_nxt = CPUSTATE_FETCH_I1;
+                        end
+                        else if ( InstPage2 && ((Inst1 == OPCODE_INH_PULSW) | (Inst1 == OPCODE_INH_PULUW)) )
+                        begin
+                            tmp_nxt[15] = 1'b0;
+                            tmp_nxt[14] = Inst1[1]; // S (0) or U (1) stack in use.
+                            tmp_nxt[13:11] = 3'H00;
+                            tmp_nxt[10:0] = {11'H018}; // W
+                            rAVMA = 1'b0;
+                            CpuState_nxt = CPUSTATE_PUL_DONTCARE1;
+                            NextState_nxt = CPUSTATE_FETCH_I1;
+                        end
                     else
                     begin
                         ALU_OP =  ALU8Op; 
@@ -2322,8 +2428,8 @@ begin
                             tmp_nxt[15] = 1'b0;
                             tmp_nxt[14] = Inst1[1]; // Mark whether to save to U or S.
                             tmp_nxt[13] = 1'b0; // Not pushing due to an interrupt.
-                            tmp_nxt[13:8] = 6'H00;
-                            tmp_nxt[7:0] = Inst2_nxt;
+                            tmp_nxt[12:11] = 2'H00;
+                            tmp_nxt[10:0] = {Inst2_nxt[7:3], 2'H0, Inst2_nxt[2:0]};
                             rAVMA = 1'b0;
                             CpuState_nxt = CPUSTATE_PSH_DONTCARE2;
                             NextState_nxt = CPUSTATE_FETCH_I1;
@@ -2333,8 +2439,8 @@ begin
                             pc_nxt = pc_p1;
                             tmp_nxt[15] = 1'b0;
                             tmp_nxt[14] = Inst1[1]; // S (0) or U (1) stack in use.
-                            tmp_nxt[13:8] = 6'H00;
-                            tmp_nxt[7:0] = Inst2_nxt;
+                            tmp_nxt[13:11] = 3'H00;
+                            tmp_nxt[10:0] = {Inst2_nxt[7:3], 2'H0, Inst2_nxt[2:0]};
                             rAVMA = 1'b0;
                             CpuState_nxt = CPUSTATE_PUL_DONTCARE1;
                             NextState_nxt = CPUSTATE_FETCH_I1;
@@ -2342,7 +2448,6 @@ begin
                         else if (Inst1 == OPCODE_IMM_TFR)
                         begin
                             // The second byte lists the registers; Top nybble is reg #1, bottom is reg #2.
-
                             case (Inst2_nxt[3:0])
                                 EXGTFR_REG_D:
                                     {a_nxt,b_nxt}  =  EXGTFRRegA;
@@ -2354,12 +2459,12 @@ begin
                                     u_nxt  =  EXGTFRRegA;
                                 EXGTFR_REG_S:
                                     s_nxt  =  EXGTFRRegA;
+                                EXGTFR_REG_PC:
+                                    pc_nxt =  EXGTFRRegA;
                                 EXGTFR_REG_W:
                                     {e_nxt,f_nxt}  =  EXGTFRRegA;
                                 EXGTFR_REG_V:
                                     v_nxt  =  EXGTFRRegA;
-                                EXGTFR_REG_PC:
-                                    pc_nxt =  EXGTFRRegA;
                                 EXGTFR_REG_DP:
                                     dp_nxt =  EXGTFRRegA[7:0];
                                 EXGTFR_REG_A:
@@ -2370,8 +2475,8 @@ begin
                                     cc_nxt =  EXGTFRRegA[7:0];
                                 EXGTFR_REG_IV:
                                     iv_nxt =  EXGTFRRegA;
-                                EXGTFR_REG_BA:
-                                    ba_nxt =  EXGTFRRegA;
+                                EXGTFR_REG_BANK:
+                                    bank_nxt =  EXGTFRRegA;
                                 EXGTFR_REG_E:
                                     e_nxt  =  EXGTFRRegA[7:0];
                                 EXGTFR_REG_F:
@@ -2382,12 +2487,10 @@ begin
                             endcase                          
                             rAVMA = 1'b0;
                             CpuState_nxt   =  CPUSTATE_TFR_DONTCARE1;
-                            
                         end
                         else if (Inst1 == OPCODE_IMM_EXG)
                         begin
                             // The second byte lists the registers; Top nybble is reg #1, bottom is reg #2.
-                              
                             case (Inst2_nxt[7:4])
                                 EXGTFR_REG_D:
                                     {a_nxt,b_nxt}  =  EXGTFRRegB;
@@ -2399,12 +2502,12 @@ begin
                                     u_nxt  =  EXGTFRRegB;
                                 EXGTFR_REG_S:
                                     s_nxt  =  EXGTFRRegB;
+                                EXGTFR_REG_PC:
+                                    pc_nxt =  EXGTFRRegB;
                                 EXGTFR_REG_W:
                                     {e_nxt,f_nxt}  =  EXGTFRRegB;
                                 EXGTFR_REG_V:
                                     v_nxt  =  EXGTFRRegB;
-                                EXGTFR_REG_PC:
-                                    pc_nxt =  EXGTFRRegB;
                                 EXGTFR_REG_DP:
                                     dp_nxt =  EXGTFRRegB[7:0];
                                 EXGTFR_REG_A:
@@ -2415,8 +2518,8 @@ begin
                                     cc_nxt =  EXGTFRRegB[7:0];
                                 EXGTFR_REG_IV:
                                     iv_nxt =  EXGTFRRegB;
-                                EXGTFR_REG_BA:
-                                    ba_nxt =  EXGTFRRegB;
+                                EXGTFR_REG_BANK:
+                                    bank_nxt =  EXGTFRRegB;
                                 EXGTFR_REG_E:
                                     e_nxt  =  EXGTFRRegB[7:0];
                                 EXGTFR_REG_F:
@@ -2436,12 +2539,12 @@ begin
                                     u_nxt  =  EXGTFRRegA;
                                 EXGTFR_REG_S:
                                     s_nxt  =  EXGTFRRegA;
+                                EXGTFR_REG_PC:
+                                    pc_nxt =  EXGTFRRegA;
                                 EXGTFR_REG_W:
                                     {e_nxt,f_nxt}  =  EXGTFRRegA;
                                 EXGTFR_REG_V:
                                     v_nxt  =  EXGTFRRegA;
-                                EXGTFR_REG_PC:
-                                    pc_nxt =  EXGTFRRegA;
                                 EXGTFR_REG_DP:
                                     dp_nxt =  EXGTFRRegA[7:0];
                                 EXGTFR_REG_A:
@@ -2452,8 +2555,8 @@ begin
                                     cc_nxt =  EXGTFRRegA[7:0];
                                 EXGTFR_REG_IV:
                                     iv_nxt =  EXGTFRRegA;
-                                EXGTFR_REG_BA:
-                                    ba_nxt =  EXGTFRRegA;
+                                EXGTFR_REG_BANK:
+                                    bank_nxt =  EXGTFRRegA;
                                 EXGTFR_REG_E:
                                     e_nxt  =  EXGTFRRegA[7:0];
                                 EXGTFR_REG_F:
@@ -2504,6 +2607,161 @@ begin
                     end
                     else            // Then it must be a 16 bit instruction
                     begin
+						if (IsALU16Imm)
+						begin
+                            pc_nxt = pc_p1;
+							if (Inst2_nxt[3]) // 8 bit destination
+							begin
+                        		ALU_OP =  ALU8Op; 
+                        		ALU_A  =  (Inst2_nxt[7:5] == 3'b110) ? 8'd0 : EXGTFRRegA[7:0];
+                        		ALU_B  =  (Inst2_nxt[3:1] == 3'b110) ? 8'd0 : EXGTFRRegB[7:0];
+                        		ALU_CC =  cc;
+								cc_nxt =  ALU[15:8];
+
+                        		if (ALU8Writeback)
+								begin
+                        			case (Inst2_nxt[0:3])
+										EXGTFR_REG_D:
+											b_nxt   =  ALU[7:0];
+										EXGTFR_REG_X:
+											x_nxt[7:0]   =  ALU[7:0];
+										EXGTFR_REG_Y:
+											y_nxt[7:0]   =  ALU[7:0];
+										EXGTFR_REG_U:
+											u_nxt[7:0]   =  ALU[7:0];
+										EXGTFR_REG_S:
+											s_nxt[7:0]   =  ALU[7:0];
+										EXGTFR_REG_PC:
+											pc_nxt[7:0]   =  ALU[7:0]; // For both EXG and TFR, this is used on the 2nd byte in the instruction's cycle.  The PC intended to transfer is actually the next byte.
+										EXGTFR_REG_W:
+											f_nxt[7:0]   =  ALU[7:0];
+										EXGTFR_REG_V:
+											v_nxt[7:0]   =  ALU[7:0];
+										EXGTFR_REG_DP:
+											dp_nxt   =  ALU[7:0];
+										EXGTFR_REG_A:
+											a_nxt   =  ALU[7:0];
+										EXGTFR_REG_B:
+											b_nxt   =  ALU[7:0];
+										EXGTFR_REG_CC:
+											cc_nxt   =  ALU[7:0];
+										EXGTFR_REG_E:
+											e_nxt   =  ALU[7:0];
+										EXGTFR_REG_F:
+											f_nxt   =  ALU[7:0];
+										default:
+        							endcase
+								end
+							end
+							else // 16 bit destination
+							begin
+								ALU16_OP   =  ALU16Opcode;
+                        		case (Inst2_nxt[7:4])
+									EXGTFR_REG_D:
+										ALU16_A   =  {a, b};
+									EXGTFR_REG_X:
+										ALU16_A   =  x;
+									EXGTFR_REG_Y:
+										ALU16_A   =  y;
+									EXGTFR_REG_U:
+										ALU16_A   =  u;
+									EXGTFR_REG_S:
+										ALU16_A   =  s;
+									EXGTFR_REG_PC:
+										ALU16_A   =  pc_p1;
+									EXGTFR_REG_W:
+										ALU16_A   =  {e, f};
+									EXGTFR_REG_V:
+										ALU16_A   =  v;
+									EXGTFR_REG_DP:
+										ALU16_A   =  {dp, 8'HFF};
+									EXGTFR_REG_A:
+										ALU16_A   =  {8'HFF, a};
+									EXGTFR_REG_B:
+										ALU16_A   =  {8'HFF, b};
+									EXGTFR_REG_CC:
+										ALU16_A   =  {8'HFF, cc};
+									EXGTFR_REG_E:
+										ALU16_A   =  {8'HFF, e};
+									EXGTFR_REG_F:
+										ALU16_A   =  {8'HFF, f};
+									default:
+										ALU16_A   =  16'H0;
+        						endcase
+                        		case (Inst2_nxt[0:3])
+									EXGTFR_REG_D:
+										ALU16_B   =  {a, b};
+									EXGTFR_REG_X:
+										ALU16_B   =  x;
+									EXGTFR_REG_Y:
+										ALU16_B   =  y;
+									EXGTFR_REG_U:
+										ALU16_B   =  u;
+									EXGTFR_REG_S:
+										ALU16_B   =  s;
+									EXGTFR_REG_PC:
+										ALU16_B   =  pc_p1;
+									EXGTFR_REG_W:
+										ALU16_B   =  {e, f};
+									EXGTFR_REG_V:
+										ALU16_B   =  v;
+									EXGTFR_REG_DP:
+										ALU16_B   =  {dp, 8'HFF};
+									EXGTFR_REG_A:
+										ALU16_B   =  {8'HFF, a};
+									EXGTFR_REG_B:
+										ALU16_B   =  {8'HFF, b};
+									EXGTFR_REG_CC:
+										ALU16_B   =  {8'HFF, cc};
+									EXGTFR_REG_E:
+										ALU16_B   =  {8'HFF, e};
+									EXGTFR_REG_F:
+										ALU16_B   =  {8'HFF, f};
+									default:
+										ALU16_B   =  16'H0;
+        						endcase
+								ALU16_CC   =  cc;
+								cc_nxt = ALU16[23:16];
+                        		if (ALU16OpWriteback)
+                        		begin
+                        			case (Inst2_nxt[0:3])
+										EXGTFR_REG_D:
+											{a_nxt, b_nxt}   =  ALU16[15:0];
+										EXGTFR_REG_X:
+											x_nxt   =  ALU16[15:0];
+										EXGTFR_REG_Y:
+											y_nxt   =  ALU16[15:0];
+										EXGTFR_REG_U:
+											u_nxt   =  ALU16[15:0];
+										EXGTFR_REG_S:
+											s_nxt   =  ALU16[15:0];
+										EXGTFR_REG_PC:
+											pc_nxt   =  ALU16[15:0]; // For both EXG and TFR, this is used on the 2nd byte in the instruction's cycle.  The PC intended to transfer is actually the next byte.
+										EXGTFR_REG_W:
+											{e_nxt,f_nxt}   =  ALU16[15:0];
+										EXGTFR_REG_V:
+											v_nxt   =  ALU16[15:0];
+										EXGTFR_REG_DP:
+											dp_nxt   =  ALU16[15:8];
+										EXGTFR_REG_A:
+											a_nxt   =  ALU16[7:0];
+										EXGTFR_REG_B:
+											b_nxt   =  ALU16[7:0];
+										EXGTFR_REG_CC:
+											cc_nxt   =  ALU16[7:0];
+										EXGTFR_REG_E:
+											e_nxt   =  ALU16[7:0];
+										EXGTFR_REG_F:
+											f_nxt   =  ALU16[7:0];
+										default:
+        							endcase
+								end
+							end
+							rLIC = 1'b1; // Instruction done!        
+							rAVMA = 1'b1;
+							CpuState_nxt   =  CPUSTATE_FETCH_I1;
+						end else if (IsALU16Opcode)
+                        begin
                                 // 83 SUBD
                                 // 8C CMPX
                                 // 8E LDX
@@ -2519,8 +2777,6 @@ begin
                                 // Wow, they were just stuffing them in willy-nilly ...
                         
                                 // LD* 16 bit immediate
-                        if (IsALU16Opcode)
-                        begin
                             rAVMA = 1'b1;
                             CpuState_nxt   =  CPUSTATE_16IMM_LO;
                         end
@@ -2878,9 +3134,9 @@ begin
 				ALU8_REG_F:
                 	ALU_A  =  f;
 			endcase
-            
+
             cc_nxt =  ALU[15:8];
-            
+
             if ( (ALU8Writeback) )
             begin
                 case (ALU8Target)
@@ -3360,6 +3616,8 @@ begin
                         ea_nxt =  u;
                     IDX_REG_S:
                         ea_nxt =  s;
+                    IDX_REG_W:
+                        ea_nxt =  {e, f};
                     default:
                         ea_nxt =  16'H0;
                 endcase
@@ -3417,7 +3675,7 @@ begin
             
             IDX_MODE_A_OFFSET:
             begin
-                ALU16_B        =  { {8{a[7]}}, a[7:0] };
+                ALU16_B    =  { {8{a[7]}}, a[7:0] };
                 rAVMA = 1'b0;
                 CpuState_nxt   =  CPUSTATE_IDX_DONTCARE3;
                 ea_nxt =  ALU16[15:0];
@@ -3431,9 +3689,34 @@ begin
                 ea_nxt =  ALU16[15:0];
             end
             
+            IDX_MODE_E_OFFSET:
+            begin
+                ALU16_B    =  { {8{e[7]}}, e[7:0] };
+                rAVMA = 1'b0;
+                CpuState_nxt   =  CPUSTATE_IDX_DONTCARE3;
+                ea_nxt =  ALU16[15:0];
+            end
+            
+            IDX_MODE_F_OFFSET:
+            begin
+                ALU16_B    =  { {8{f[7]}}, f[7:0] };
+                rAVMA = 1'b0;
+                CpuState_nxt   =  CPUSTATE_IDX_DONTCARE3;
+                ea_nxt =  ALU16[15:0];
+            end
+            
             IDX_MODE_D_OFFSET:
             begin
                 ALU16_B    =  {a, b};
+                
+                ea_nxt     =  ALU16[15:0];
+                rAVMA = 1'b1;
+                CpuState_nxt = CPUSTATE_IDX_DOFF_DONTCARE1;
+            end
+            
+            IDX_MODE_W_OFFSET:
+            begin
+                ALU16_B    =  {e, f};
                 
                 ea_nxt     =  ALU16[15:0];
                 rAVMA = 1'b1;
@@ -3474,6 +3757,8 @@ begin
                         u_nxt  =  ALU16[15:0];
                     IDX_REG_S:
                         s_nxt  =  ALU16[15:0];
+                    IDX_REG_W:
+                        w_nxt  =  ALU16[15:0];
                     default:
                     begin
                     end
@@ -3515,6 +3800,8 @@ begin
                         u_nxt  =  ALU16[15:0];
                     IDX_REG_S:
                         s_nxt  =  ALU16[15:0];
+                    IDX_REG_W:
+                        w_nxt  =  ALU16[15:0];
                     default:
                     begin
                     end
@@ -3626,6 +3913,8 @@ begin
                 ALU16_A    =  u;
             IDX_REG_S:
                 ALU16_A    =  s;
+            IDX_REG_W:
+                ALU16_A    =  {e, f};
             IDX_REG_PC:
                 ALU16_A    =  pc_nxt;  // Whups; tricky; not part of the actual pattern
             default:
@@ -3847,7 +4136,7 @@ begin
     CPUSTATE_PSH_ACTION:
     begin
         rAVMA = 1'b1;
-        if (tmp[11] & ~(tmp[15]))                    // IV_LO
+        if (tmp[10] & ~(tmp[15]))                    // IV_LO
         begin
             addr_nxt = (tmp[14]) ? u_m1 : s_m1;
             if (tmp[14])
@@ -3858,7 +4147,7 @@ begin
             RnWOut = 1'b0; // write
             tmp_nxt[15] = 1'b1;            
         end
-        else if (tmp[11] & (tmp[15]))                    // IV_HI
+        else if (tmp[10] & (tmp[15]))                    // IV_HI
         begin
             addr_nxt = (tmp[14]) ? u_m1 : s_m1;
             if (tmp[14])
@@ -3867,10 +4156,10 @@ begin
                 s_nxt = s_m1;
             DOutput = iv[15:8];
             RnWOut = 1'b0; // write
-            tmp_nxt[11] = 1'b0;
+            tmp_nxt[10] = 1'b0;
             tmp_nxt[15] = 1'b0;            
         end
-        else if (tmp[7] & ~(tmp[15]))                    // PC_LO
+        else if (tmp[9] & ~(tmp[15]))                    // PC_LO
         begin
             addr_nxt = (tmp[14]) ? u_m1 : s_m1;
             if (tmp[14])
@@ -3881,7 +4170,7 @@ begin
             RnWOut = 1'b0; // write
             tmp_nxt[15] = 1'b1;            
         end
-        else if (tmp[7] & (tmp[15]))                    // PC_HI
+        else if (tmp[9] & (tmp[15]))                    // PC_HI
         begin
             addr_nxt = (tmp[14]) ? u_m1 : s_m1;
             if (tmp[14])
@@ -3890,10 +4179,10 @@ begin
                 s_nxt = s_m1;
             DOutput = pc[15:8];
             RnWOut = 1'b0; // write
-            tmp_nxt[7] = 1'b0;
+            tmp_nxt[9] = 1'b0;
             tmp_nxt[15] = 1'b0;            
         end
-        else if (tmp[6] & ~(tmp[15]))                    // U/S_LO
+        else if (tmp[8] & ~(tmp[15]))                    // U/S_LO
         begin
             addr_nxt = (tmp[14]) ? u_m1 : s_m1;
             if (tmp[14])
@@ -3904,7 +4193,7 @@ begin
             RnWOut = 1'b0; // write
             tmp_nxt[15] = 1'b1;            
         end
-        else if (tmp[6] & (tmp[15]))                    // U/S_HI
+        else if (tmp[8] & (tmp[15]))                    // U/S_HI
         begin
             addr_nxt = (tmp[14]) ? u_m1 : s_m1;
             if (tmp[14])
@@ -3913,10 +4202,10 @@ begin
                 s_nxt = s_m1;
             DOutput = (tmp[14]) ? s[15:8] : u[15:8]; 
             RnWOut = 1'b0; // write
-            tmp_nxt[6] = 1'b0;
+            tmp_nxt[8] = 1'b0;
             tmp_nxt[15] = 1'b0;            
         end
-        else if (tmp[5] & ~(tmp[15]))                    // Y_LO
+        else if (tmp[7] & ~(tmp[15]))                    // Y_LO
         begin
             addr_nxt = (tmp[14]) ? u_m1 : s_m1;
             if (tmp[14])
@@ -3927,7 +4216,7 @@ begin
             RnWOut = 1'b0; // write
             tmp_nxt[15] = 1'b1;            
         end
-        else if (tmp[5] & (tmp[15]))                    // Y_HI
+        else if (tmp[7] & (tmp[15]))                    // Y_HI
         begin
             addr_nxt = (tmp[14]) ? u_m1 : s_m1;
             if (tmp[14])
@@ -3936,10 +4225,10 @@ begin
                 s_nxt = s_m1;
             DOutput = y[15:8];
             RnWOut = 1'b0; // write
-            tmp_nxt[5] = 1'b0;
+            tmp_nxt[7] = 1'b0;
             tmp_nxt[15] = 1'b0;            
-        end        
-        else if (tmp[4] & ~(tmp[15]))                    // X_LO
+        end
+        else if (tmp[6] & ~(tmp[15]))                    // X_LO
         begin
             addr_nxt = (tmp[14]) ? u_m1 : s_m1;
             if (tmp[14])
@@ -3950,7 +4239,7 @@ begin
             RnWOut = 1'b0; // write
             tmp_nxt[15] = 1'b1;            
         end
-        else if (tmp[4] & (tmp[15]))                    // X_HI
+        else if (tmp[6] & (tmp[15]))                    // X_HI
         begin
             addr_nxt = (tmp[14]) ? u_m1 : s_m1;
             if (tmp[14])
@@ -3959,10 +4248,10 @@ begin
                 s_nxt = s_m1;
             DOutput = x[15:8];
             RnWOut = 1'b0; // write
-            tmp_nxt[4] = 1'b0;
+            tmp_nxt[6] = 1'b0;
             tmp_nxt[15] = 1'b0;            
         end
-        else if (tmp[3])                    // DP
+        else if (tmp[5])                    // DP
         begin
             addr_nxt = (tmp[14]) ? u_m1 : s_m1;
             if (tmp[14])
@@ -3970,6 +4259,28 @@ begin
             else
                 s_nxt = s_m1;
             DOutput = dp;
+            RnWOut = 1'b0; // write
+            tmp_nxt[5] = 1'b0;        
+        end
+        else if (tmp[4])                    // F
+        begin
+            addr_nxt = (tmp[14]) ? u_m1 : s_m1;
+            if (tmp[14])
+                u_nxt = u_m1;
+            else
+                s_nxt = s_m1;
+            DOutput = f;
+            RnWOut = 1'b0; // write
+            tmp_nxt[4] = 1'b0;        
+        end
+        else if (tmp[3])                    // E
+        begin
+            addr_nxt = (tmp[14]) ? u_m1 : s_m1;
+            if (tmp[14])
+                u_nxt = u_m1;
+            else
+                s_nxt = s_m1;
+            DOutput = e;
             RnWOut = 1'b0; // write
             tmp_nxt[3] = 1'b0;        
         end
@@ -4076,8 +4387,28 @@ begin
                 s_nxt = s_p1;
             b_nxt = D[7:0];
             tmp_nxt[2] = 1'b0;
-        end 
-        else if (tmp[3])                    // DP
+        end
+        else if (tmp[3])                    // E
+        begin
+            addr_nxt = (tmp[14]) ? u : s;
+            if (tmp[14])
+                u_nxt = u_p1;
+            else
+                s_nxt = s_p1;
+            e_nxt = D[7:0];
+            tmp_nxt[3] = 1'b0;
+        end
+        else if (tmp[4])                    // F
+        begin
+            addr_nxt = (tmp[14]) ? u : s;
+            if (tmp[14])
+                u_nxt = u_p1;
+            else
+                s_nxt = s_p1;
+            f_nxt = D[7:0];
+            tmp_nxt[4] = 1'b0;
+        end
+        else if (tmp[5])                    // DP
         begin
             addr_nxt = (tmp[14]) ? u : s;
             if (tmp[14])
@@ -4085,9 +4416,9 @@ begin
             else
                 s_nxt = s_p1;
             dp_nxt = D[7:0];
-            tmp_nxt[3] = 1'b0;
+            tmp_nxt[5] = 1'b0;
         end        
-        else if (tmp[4] & (~tmp[15]))                    // X_HI
+        else if (tmp[6] & (~tmp[15]))                    // X_HI
         begin
             addr_nxt = (tmp[14]) ? u : s;
             if (tmp[14])
@@ -4097,7 +4428,7 @@ begin
             x_nxt[15:8] = D[7:0];
             tmp_nxt[15] = 1'b1;            
         end
-        else if (tmp[4] & tmp[15])                    // X_LO
+        else if (tmp[6] & tmp[15])                    // X_LO
         begin
             addr_nxt = (tmp[14]) ? u : s;
             if (tmp[14])
@@ -4105,10 +4436,10 @@ begin
             else
                 s_nxt = s_p1;
             x_nxt[7:0] = D[7:0];
-            tmp_nxt[4] = 1'b0;
+            tmp_nxt[6] = 1'b0;
             tmp_nxt[15] = 1'b0;            
         end
-        else if (tmp[5] & (~tmp[15]))                    // Y_HI
+        else if (tmp[7] & (~tmp[15]))                    // Y_HI
         begin
             addr_nxt = (tmp[14]) ? u : s;
             if (tmp[14])
@@ -4118,7 +4449,7 @@ begin
             y_nxt[15:8] = D[7:0];
             tmp_nxt[15] = 1'b1;            
         end
-        else if (tmp[5] & tmp[15])                    // Y_LO
+        else if (tmp[7] & tmp[15])                    // Y_LO
         begin
             addr_nxt = (tmp[14]) ? u : s;
             if (tmp[14])
@@ -4126,10 +4457,10 @@ begin
             else
                 s_nxt = s_p1;
             y_nxt[7:0] = D[7:0];
-            tmp_nxt[5] = 1'b0;
+            tmp_nxt[7] = 1'b0;
             tmp_nxt[15] = 1'b0;            
         end
-        else if (tmp[6] & (~tmp[15]))                    // U/S_HI
+        else if (tmp[8] & (~tmp[15]))                    // U/S_HI
         begin
             addr_nxt = (tmp[14]) ? u : s;
             if (tmp[14])
@@ -4142,7 +4473,7 @@ begin
                 u_nxt[15:8] = D[7:0];
             tmp_nxt[15] = 1'b1;            
         end
-        else if (tmp[6] & tmp[15])                    // U/S_LO
+        else if (tmp[8] & tmp[15])                    // U/S_LO
         begin
             addr_nxt = (tmp[14]) ? u : s;
             if (tmp[14])
@@ -4153,10 +4484,10 @@ begin
                 s_nxt[7:0] = D[7:0];
             else
                 u_nxt[7:0] = D[7:0];
-            tmp_nxt[6] = 1'b0;
+            tmp_nxt[8] = 1'b0;
             tmp_nxt[15] = 1'b0;            
         end
-        else if (tmp[7] & (~tmp[15]))                    // PC_HI
+        else if (tmp[9] & (~tmp[15]))                    // PC_HI
         begin
             addr_nxt = (tmp[14]) ? u : s;
             if (tmp[14])
@@ -4166,7 +4497,7 @@ begin
             pc_nxt[15:8] = D[7:0];
             tmp_nxt[15] = 1'b1;            
         end
-        else if (tmp[7] & tmp[15])                    // PC_LO
+        else if (tmp[9] & tmp[15])                    // PC_LO
         begin
             addr_nxt = (tmp[14]) ? u : s;
             if (tmp[14])
@@ -4174,10 +4505,10 @@ begin
             else
                 s_nxt = s_p1;
             pc_nxt[7:0] = D[7:0];
-            tmp_nxt[7] = 1'b0;
+            tmp_nxt[9] = 1'b0;
             tmp_nxt[15] = 1'b0;            
         end
-        else if (tmp[11] & (~tmp[15]))                    // IV_HI
+        else if (tmp[10] & (~tmp[15]))                    // IV_HI
         begin
             addr_nxt = (tmp[14]) ? u : s;
             if (tmp[14])
@@ -4187,7 +4518,7 @@ begin
             iv_nxt[15:8] = D[7:0];
             tmp_nxt[15] = 1'b1;            
         end
-        else if (tmp[11] & tmp[15])                    // IV_LO
+        else if (tmp[10] & tmp[15])                    // IV_LO
         begin
             addr_nxt = (tmp[14]) ? u : s;
             if (tmp[14])
@@ -4195,7 +4526,7 @@ begin
             else
                 s_nxt = s_p1;
             iv_nxt[7:0] = D[7:0];
-            tmp_nxt[8] = 1'b0;
+            tmp_nxt[10] = 1'b0;
             tmp_nxt[15] = 1'b0;            
         end
         else
@@ -4228,7 +4559,7 @@ begin
     CPUSTATE_IRQ_START:
     begin
         addr_nxt = pc;
-        tmp_nxt = 16'H28FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC; set LIC on every push 
+        tmp_nxt = 16'H38FF; // Save to the W, S stack, PC, U, Y, X, DP, B, A, CC; set LIC on every push 
         NextState_nxt = CPUSTATE_IRQ_DONTCARE2;
         rAVMA = 1'b1;
         CpuState_nxt = CPUSTATE_IRQ_DONTCARE;
@@ -4250,7 +4581,7 @@ begin
     CPUSTATE_SWI_START:
     begin
         addr_nxt = pc;
-        tmp_nxt = 16'H08FF; // Save to the S stack, PC, U, Y, X, DP, B, A, CC
+        tmp_nxt = 16'H18FF; // Save to the W, S stack, PC, U, Y, X, DP, B, A, CC
 
         NextState_nxt = CPUSTATE_IRQ_DONTCARE2;
         rAVMA = 1'b1;
